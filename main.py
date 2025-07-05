@@ -1,82 +1,57 @@
-from google import genai
-import pyautogui as auto
-from PIL import Image
-import io
-import re
+import pyautogui
+import time
 
-# ✅ Use your valid Gemini API key
-client = genai.Client(api_key="AIzaSyBogKf9ab6ES5BQQVkKmaSajnqOh0WaNyg")
+def find_and_click_image(image_path, confidence=0.8, offset_x=0, offset_y=0):
+    """
+    Locate an image on the screen and click at an offset position relative to its center.
+    
+    Args:
+        image_path (str): Path to the image file to locate.
+        confidence (float): Matching confidence between 0 and 1 (requires OpenCV).
+        offset_x (int): Horizontal offset from the center of the found image.
+        offset_y (int): Vertical offset from the center of the found image.
+        
+    Returns:
+        bool: True if image was found and clicked, False otherwise.
+    """
+    try:
+        # Pause briefly to allow user to prepare screen if needed
+        time.sleep(1)
+        
+        # Locate the image on the screen with confidence threshold
+        location = pyautogui.locateOnScreen(image_path, confidence=confidence)
+        
+        if location is not None:
+            # Get the center coordinates of the located image
+            center_point = pyautogui.center(location)
+            
+            # Calculate the target coordinates with offset
+            target_x = center_point.x + offset_x
+            target_y = center_point.y + offset_y
+            
+            # Move the mouse to the target coordinates and click
+            pyautogui.moveTo(target_x, target_y)
+            pyautogui.click()
+            
+            print(f"Clicked on image at ({target_x}, {target_y})")
+            return True
+        else:
+            print("Image not found on the screen.")
+            return False
+            
+    except pyautogui.ImageNotFoundException:
+        print("ImageNotFoundException: Could not locate the image on the screen.")
+        return False
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        return False
 
-def capture_screen():
-    """Capture full screen and return image bytes + size."""
-    screenshot = auto.screenshot()
-    img_byte_arr = io.BytesIO()
-    screenshot.save(img_byte_arr, format="PNG")
-    img_byte_arr.seek(0)
-    return img_byte_arr.read(), screenshot.size  # (width, height)
-
-def extract_bbox(text):
-    """Extract bounding box from Gemini response: [y_min, x_min, y_max, x_max]"""
-    match = re.search(r"\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]", text)
-    if match:
-        return list(map(int, match.groups()))
-    return None
-
-while True:
-    user_input = input("\nEnter your command (or 'exit'): ")
-    if user_input.strip().lower() == "exit":
-        break
-
-    # 1. Capture screen
-    image_bytes, (W, H) = capture_screen()
-
-    # 2. Gemini Prompt
-    prompt = f"""
-Instruction: "{user_input}"
-
-You are given a screenshot. Return the bounding box of the requested UI object as:
-[y_min, x_min, y_max, x_max]
-
-Use **normalized coordinates** between 0 and 1000.
-Do not explain.
-"""
-
-    response = client.models.generate_content(
-        model="gemini-1.5-flash",
-        contents=[{
-            "role": "user",
-            "parts": [
-                {
-                    "inline_data": {
-                        "mime_type": "image/png",
-                        "data": image_bytes
-                    }
-                },
-                {"text": prompt}
-            ]
-        }]
-    )
-
-    print("\n🔵 Gemini raw response:\n", response.text.strip())
-
-    # 3. Parse bounding box
-    bbox = extract_bbox(response.text)
-    if not bbox:
-        print("❌ Could not extract bounding box.")
-        continue
-
-    y_min, x_min, y_max, x_max = bbox
-
-    # 4. Convert normalized (0–1000) bbox to pixel coordinates
-    top = (y_min / 1000) * H
-    left = (x_min / 1000) * W
-    bottom = (y_max / 1000) * H
-    right = (x_max / 1000) * W
-
-    # 5. Calculate center of bounding box
-    center_x = int((left + right) / 2)
-    center_y = int((top + bottom) / 2)
-
-    print(f"✅ Moving to bounding box center at ({center_x}, {center_y})")
-    auto.moveTo(center_x, center_y, duration=0.4)
-    auto.click()
+if __name__ == "__main__":
+    # Replace 'chrome.png' with your image filename or full path
+    image_file = "33.png"
+    
+    # Example: move 10 pixels right and 5 pixels down from the center of the found image
+    success = find_and_click_image(image_file, confidence=0.8, offset_x=10, offset_y=5)
+    
+    if not success:
+        print("Please check if the image exists, matches the screen exactly, and your screen scaling is 100%.")
