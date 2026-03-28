@@ -1,0 +1,6 @@
+[submodule "qwen-desktop"]
+	path = qwen-desktop
+	url = https://github.com/PCJIRON/qwen-desktop.git
+[submodule "qwen-code"]
+	path = qwen-code
+	url = https://github.com/PCJIRON/qwen-code.git
