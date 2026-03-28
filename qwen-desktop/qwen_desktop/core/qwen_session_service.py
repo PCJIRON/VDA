@@ -85,7 +85,7 @@ class QwenSessionService:
                                 parts = record.get('message', {}).get('parts', [])
                                 if parts and 'text' in parts[0]:
                                     text = parts[0]['text']
-                                    title = text[:30] + "..." if len(text) > 30 else text
+                                    title = text[:20] + "..." if len(text) > 20 else text
                                     break
                         except: pass
                         
@@ -94,7 +94,7 @@ class QwenSessionService:
                         parts = last_record.get('message', {}).get('parts', [])
                         if parts and 'text' in parts[0]:
                             full_text = parts[0]['text'].replace('\n', ' ').strip()
-                            last_msg_text = full_text[:40] + "..." if len(full_text) > 40 else full_text
+                            last_msg_text = full_text[:22] + "..." if len(full_text) > 22 else full_text
                     except: pass
                 except:
                     pass
@@ -187,15 +187,17 @@ class QwenSessionService:
                 if parts:
                     text_parts = [p.get('text', '') for p in parts if 'text' in p]
                     content = "".join(text_parts)
+                    attachments = [p for p in parts if p.get('type') == 'image_url' or 'image_url' in p]
                     messages.append({
                         "role": role,
-                        "content": content
+                        "content": content,
+                        "attachments": attachments
                     })
 
         return session_id, messages, leaf_uuid
 
 
-    def save_message(self, session_id: str, role: str, text: str, parent_uuid: str = None) -> str:
+    def save_message(self, session_id: str, role: str, text: str, attachments: list = None, parent_uuid: str = None) -> str:
         """
         Save a single message to the session's JSONL file.
         Returns the generated UUID for this message, to be used as parent_uuid for the next.
@@ -208,6 +210,18 @@ class QwenSessionService:
         record_type = "assistant" if role == "assistant" else "user"
         msg_role = "model" if role == "assistant" else "user"
 
+        parts = [{"text": text}]
+        if attachments:
+            for att in attachments:
+                if att.get('type') == 'image' or att.get('image_url'):
+                    mime = att.get('mime', 'image/png')
+                    b64 = att.get('base64')
+                    parts.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{b64}"}
+                    })
+                # We don't save raw file text as standalone parts right now, it's injected into text
+
         record = {
             "uuid": msg_uuid,
             "parentUuid": parent_uuid or "",
@@ -217,9 +231,7 @@ class QwenSessionService:
             "type": record_type,
             "message": {
                 "role": msg_role,
-                "parts": [
-                    {"text": text}
-                ]
+                "parts": parts
             }
         }
         

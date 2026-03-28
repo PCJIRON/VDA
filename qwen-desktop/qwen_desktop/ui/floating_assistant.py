@@ -4,14 +4,14 @@ Matches the exact expanding, glowing, modern UI from the React design.
 """
 from PyQt6.QtWidgets import (
     QWidget, QLineEdit, QHBoxLayout, QPushButton, QLabel, QVBoxLayout, QScrollArea,
-    QApplication, QGraphicsDropShadowEffect, QFrame, QMenu
+    QApplication, QGraphicsDropShadowEffect, QFrame, QMenu, QFileDialog, QSizePolicy
 )
 from PyQt6.QtCore import (
     Qt, QPropertyAnimation, QRect, QPoint, QEasingCurve, pyqtSignal, 
-    QTimer, QEvent, QThread
+    QTimer, QEvent, QThread, QVariantAnimation
 )
 from PyQt6.QtGui import (
-    QColor, QPainter, QLinearGradient, QBrush, QCursor, QAction, QFont, QPalette
+    QColor, QPainter, QLinearGradient, QBrush, QCursor, QAction, QFont, QPalette, QPixmap
 )
 import datetime
 import asyncio
@@ -55,7 +55,7 @@ class APIServerWorker(QThread):
 
 class MessageBubble(QWidget):
     """A chat message bubble resembling the React design."""
-    def __init__(self, text: str, sender: str, is_vision: bool = False, file_name: str = None, parent=None):
+    def __init__(self, text: str, sender: str, is_vision: bool = False, attachments: list = None, parent=None):
         super().__init__(parent)
         self.sender = sender
         self.layout = QVBoxLayout(self)
@@ -65,6 +65,8 @@ class MessageBubble(QWidget):
         self.frame = QFrame()
         self.frame.setMaximumWidth(280)
         self.frame_layout = QVBoxLayout(self.frame)
+        self.frame_layout.setContentsMargins(12, 10, 12, 10)
+        self.frame_layout.setSpacing(6)
         
         if sender == "user":
             self.frame.setStyleSheet("""
@@ -84,15 +86,41 @@ class MessageBubble(QWidget):
                 }
             """)
             
-        if file_name:
-            attach_lbl = QLabel(f"📎 {file_name}")
-            attach_lbl.setStyleSheet(f"font-size: 11px; font-weight: bold; color: {'white' if sender=='user' else '#4b5563'}; border-bottom: 1px solid {'rgba(255,255,255,0.2)' if sender=='user' else '#e5e7eb'}; padding-bottom: 4px;")
-            self.frame_layout.addWidget(attach_lbl)
+        # Render File Chips Above Text
+        if attachments:
+            for att in attachments:
+                if att.get('type') == 'file':
+                    name = att.get('name', 'File')
+                    chip = QLabel(f"\uE7C3 {name}")
+                    chip.setStyleSheet(f"background: {'rgba(255,255,255,0.2)' if sender == 'user' else 'rgba(0,0,0,0.05)'}; color: {'white' if sender == 'user' else '#374151'}; padding: 6px; border-radius: 4px; font-family: 'Segoe Fluent Icons', 'Segoe UI'; font-size: 11px;")
+                    self.frame_layout.addWidget(chip)
 
         self.msg_lbl = QLabel(text)
         self.msg_lbl.setWordWrap(True)
         self.msg_lbl.setStyleSheet("background: transparent; border: none;")
         self.frame_layout.addWidget(self.msg_lbl)
+        
+        # Render Image Previews Below Text
+        if attachments:
+            for att in attachments:
+                img_url = att.get('image_url') or att.get('base64')
+                if img_url or att.get('type') == 'image':
+                    img_data = att.get('base64')
+                    if img_url and type(img_url) == dict:
+                        img_data = img_url.get('url', '').split('base64,')[-1]
+                        
+                    if img_data:
+                        try:
+                            import base64
+                            img_lbl = QLabel()
+                            pixmap = QPixmap()
+                            pixmap.loadFromData(base64.b64decode(img_data))
+                            scaled = pixmap.scaledToWidth(240, Qt.TransformationMode.SmoothTransformation)
+                            img_lbl.setPixmap(scaled)
+                            img_lbl.setStyleSheet("border-radius: 6px; background: transparent;")
+                            self.frame_layout.addWidget(img_lbl)
+                        except Exception as e:
+                            pass
         
         time_str = datetime.datetime.now().strftime("%I:%M %p")
         time_lbl = QLabel(time_str)
@@ -187,7 +215,17 @@ class ChatHistoryPopup(QWidget):
         self.session_scroll = QScrollArea()
         self.session_scroll.setFixedWidth(200)
         self.session_scroll.setWidgetResizable(True)
-        self.session_scroll.setStyleSheet("QScrollArea { border: none; border-right: 1px solid #e5e7eb; background: transparent; }")
+        self.session_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        
+        scroll_style = """
+            QScrollArea { border: none; border-right: 1px solid #e5e7eb; background: transparent; }
+            QScrollBar:vertical { border: none; background: transparent; width: 6px; margin: 0px; }
+            QScrollBar::handle:vertical { background: #d1d5db; min-height: 30px; border-radius: 3px; }
+            QScrollBar::handle:vertical:hover { background: #9ca3af; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
+        """
+        self.session_scroll.setStyleSheet(scroll_style)
         
         self.session_list_w = QWidget()
         # Explicit explicitly setting background to transparent stops the sharp corners from overlapping radius
@@ -200,10 +238,27 @@ class ChatHistoryPopup(QWidget):
         self.session_scroll.setWidget(self.session_list_w)
         c_layout.addWidget(self.session_scroll)
         
+        # Right Panel Wrapper
+        right_panel_w = QWidget()
+        right_panel_w.setStyleSheet("background: transparent;")
+        rp_layout = QVBoxLayout(right_panel_w)
+        rp_layout.setContentsMargins(0, 0, 0, 0)
+        rp_layout.setSpacing(0)
+        
         # Right Panel (Chat View)
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
-        self.scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        
+        msg_scroll_style = """
+            QScrollArea { border: none; background: transparent; }
+            QScrollBar:vertical { border: none; background: transparent; width: 6px; margin: 0px; }
+            QScrollBar::handle:vertical { background: #d1d5db; min-height: 30px; border-radius: 3px; }
+            QScrollBar::handle:vertical:hover { background: #9ca3af; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
+        """
+        self.scroll.setStyleSheet(msg_scroll_style)
         
         self.messages_w = QWidget()
         self.messages_w.setStyleSheet("background: transparent;")
@@ -211,7 +266,28 @@ class ChatHistoryPopup(QWidget):
         self.msg_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         self.scroll.setWidget(self.messages_w)
-        c_layout.addWidget(self.scroll)
+        rp_layout.addWidget(self.scroll)
+        
+        # Attachment Staging Area
+        self.staging_scroll = QScrollArea()
+        self.staging_scroll.setFixedHeight(95)
+        self.staging_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.staging_scroll.setStyleSheet("QScrollArea { border: none; border-top: 1px solid #e5e7eb; background: #f9fafb; border-bottom-right-radius: 16px; } QScrollBar {height:0px;}")
+        
+        self.staging_w = QWidget()
+        self.staging_w.setStyleSheet("background: transparent;")
+        self.staging_layout = QHBoxLayout(self.staging_w)
+        self.staging_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.staging_layout.setContentsMargins(10, 10, 10, 10)
+        self.staging_layout.setSpacing(10)
+        
+        self.staging_scroll.setWidgetResizable(True)
+        self.staging_scroll.setWidget(self.staging_w)
+        self.staging_scroll.hide()
+        
+        rp_layout.addWidget(self.staging_scroll)
+        
+        c_layout.addWidget(right_panel_w)
         
         layout.addWidget(content_w)
         
@@ -224,10 +300,12 @@ class ChatHistoryPopup(QWidget):
             if item.widget(): item.widget().deleteLater()
             
         for s in sessions:
-            btn = QPushButton(f"{s['title']}\n{s.get('last_msg', '')}")
+            title = s['title']
+            preview = s.get('last_msg', '')
+            btn = QPushButton(f"{title}\n{preview}")
             btn.setStyleSheet("""
                 QPushButton {
-                    background: transparent; color: #4b5563; text-align: left; padding: 10px;
+                    background: transparent; color: #4b5563; text-align: center; padding: 10px;
                     border-radius: 6px; font-size: 11px; font-weight: 500;
                 }
                 QPushButton:hover { background-color: #e5e7eb; color: #1f2937; }
@@ -244,11 +322,12 @@ class ChatHistoryPopup(QWidget):
             if item.widget(): item.widget().deleteLater()
         self._last_ai_bubble = None
         
-    def add_message(self, text, sender, is_vision=False, file_name=None):
-        bubble = MessageBubble(text, sender, is_vision, file_name)
+    def add_message(self, text, sender, attachments=None):
+        bubble = MessageBubble(text, sender, attachments=attachments)
         if sender == "ai":
             self._last_ai_bubble = bubble
         self.msg_layout.addWidget(bubble)
+        self.scroll.verticalScrollBar().setValue(self.scroll.verticalScrollBar().maximum())
         # Scroll to bottom
         QTimer.singleShot(50, self.scroll_to_bottom)
 
@@ -305,6 +384,7 @@ class FloatingAssistant(QWidget):
         self._chat_history = []
         self.last_msg_uuid = None
         self.messages_count = 0
+        self.staged_files = []
             
         # Hook up sessions logic
         self.load_session_clicked = lambda u: self._switch_to_session(u)
@@ -352,6 +432,7 @@ class FloatingAssistant(QWidget):
         self.vision_btn.clicked.connect(self.toggle_vision)
         
         self.attach_btn = AttachButton()
+        self.attach_btn.clicked.connect(self.select_files)
         
         self.send_btn = SendButton()
         self.send_btn.clicked.connect(self.submit_message)
@@ -449,18 +530,24 @@ class FloatingAssistant(QWidget):
         self.anim.setEndValue(target_width)
         
         if expand:
-            self.input_wrapper.show()
             try:
                 self.anim.finished.disconnect()
             except:
                 pass
-            self.anim.finished.connect(self.position_history_popup)
+            
+            def expand_done():
+                self.input_wrapper.show()
+                self.position_history_popup()
+                # Focus the line edit after fully appearing
+                self.input_field.setFocus()
+                
+            self.anim.finished.connect(expand_done)
         else:
+            self.input_wrapper.hide()
             try:
                 self.anim.finished.disconnect()
             except:
                 pass
-            self.anim.finished.connect(self.input_wrapper.hide)
             
         self.anim.start()
 
@@ -470,11 +557,15 @@ class FloatingAssistant(QWidget):
             self.update_size(True)
         self.update()
 
-    def leaveEvent(self, event):
-        if not self.is_expanded:
+    def check_mouse_leave(self):
+        from PyQt6.QtGui import QCursor
+        if not self.is_expanded and not self.geometry().contains(QCursor.pos()):
             self.is_hovered = False
             self.update_size(False)
-        self.update()
+            self.update()
+
+    def leaveEvent(self, event):
+        QTimer.singleShot(100, self.check_mouse_leave)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -512,13 +603,16 @@ class FloatingAssistant(QWidget):
 
     def toggle_expand(self):
         self.is_expanded = not self.is_expanded
+        
+        from PyQt6.QtGui import QCursor
+        self.is_hovered = self.geometry().contains(QCursor.pos())
+        
         self.update_size(self.is_expanded or self.is_hovered)
         self.update()
         
         if self.is_expanded:
-            self.position_history_popup()
             self.history_popup.show()
-            self.input_field.setFocus()
+            # self.input_field.setFocus()  # Moved to expand_done in update_size
         else:
             self.history_popup.hide()
 
@@ -595,45 +689,145 @@ class FloatingAssistant(QWidget):
         self.input_field.setPlaceholderText("Ask with Vision..." if self.is_vision_enabled else "Ask Qwen AI...")
         self.update()
         
+    def select_files(self):
+        from pathlib import Path
+        import base64
+        files, _ = QFileDialog.getOpenFileNames(self, "Select Files", "", "All Files (*);;Images (*.png *.jpg *.jpeg *.bmp)")
+        if not files: return
+        
+        for file_path in files:
+            path = Path(file_path)
+            content_type = "image" if path.suffix.lower() in ['.png', '.jpg', '.jpeg', '.bmp', '.gif'] else "file"
+            
+            if content_type == "image":
+                try:
+                    with open(path, "rb") as f:
+                        b64 = base64.b64encode(f.read()).decode('utf-8')
+                    self.staged_files.append({"type": "image", "path": str(path), "base64": b64, "name": path.name, "mime": f"image/{path.suffix[1:]}"})
+                except Exception as e:
+                    pass
+            else:
+                try:
+                    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                        text = f.read()
+                    self.staged_files.append({"type": "file", "path": str(path), "content": text, "name": path.name})
+                except:
+                    pass
+                    
+        self.update_staging_ui()
+        
+        # Prevent floating button from staying closed if user clicked outside during FileDialog
+        if not self.is_expanded and self.staged_files:
+            self.toggle_expand()
+
+    def update_staging_ui(self):
+        while self.history_popup.staging_layout.count():
+            item = self.history_popup.staging_layout.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+            
+        if not self.staged_files:
+            self.history_popup.staging_scroll.hide()
+            return
+            
+        self.history_popup.staging_scroll.show()
+        
+        for idx, f in enumerate(self.staged_files):
+            chip = QWidget()
+            chip.setStyleSheet("background: white; border: 1px solid #e5e7eb; border-radius: 6px;")
+            chip.setFixedHeight(60)
+            chip_layout = QHBoxLayout(chip)
+            chip_layout.setContentsMargins(6, 6, 6, 6)
+            
+            if f['type'] == 'image':
+                img_lbl = QLabel()
+                pixmap = QPixmap()
+                import base64
+                pixmap.loadFromData(base64.b64decode(f['base64']))
+                img_lbl.setPixmap(pixmap.scaledToHeight(48, Qt.TransformationMode.SmoothTransformation))
+                chip_layout.addWidget(img_lbl)
+            else:
+                icon_lbl = QLabel("\uE7C3")
+                icon_lbl.setStyleSheet("font-family: 'Segoe Fluent Icons', 'Segoe UI'; font-size: 24px; color: #6366f1; border: none;")
+                chip_layout.addWidget(icon_lbl)
+                name_lbl = QLabel(f['name'])
+                name_lbl.setStyleSheet("font-size: 11px; color: #374151; font-weight: bold; border: none;")
+                name_lbl.setMaximumWidth(100)
+                chip_layout.addWidget(name_lbl)
+                
+            close_btn = QPushButton("\uE711")
+            close_btn.setStyleSheet("QPushButton { font-family: 'Segoe Fluent Icons'; font-size: 12px; border: none; background: transparent; color: #ef4444; } QPushButton:hover { background: #fee2e2; border-radius: 10px; }")
+            close_btn.setFixedSize(20, 20)
+            close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            close_btn.clicked.connect(lambda checked, i=idx: self.remove_staged_file(i))
+            
+            chip_layout.addWidget(close_btn)
+            self.history_popup.staging_layout.addWidget(chip)
+            
+        self.history_popup.staging_layout.addStretch()
+
+    def remove_staged_file(self, idx):
+        if 0 <= idx < len(self.staged_files):
+            self.staged_files.pop(idx)
+            self.update_staging_ui()
+
     def submit_message(self):
         text = self.input_field.text().strip()
-        if not text: return
+        if not text and not self.staged_files: 
+            return
         
+        if not text and self.staged_files:
+            text = "Please refer to the attached files."
+            
         self.messages_count += 1
         self.input_field.clear()
+        
+        att_copy = self.staged_files.copy()
+        self.staged_files.clear()
+        self.update_staging_ui()
         
         if not self.is_expanded:
             self.toggle_expand()
             
-        self.history_popup.add_message(text, "user", self.is_vision_enabled)
+        self.history_popup.add_message(text, "user", attachments=att_copy)
         
         if self.oauth and self.oauth.is_authenticated() and getattr(self, "api_client", None):
-            self.last_msg_uuid = self.session_service.save_message(self.session_id, "user", text, self.last_msg_uuid)
-            self._handle_api(text)
+            self.last_msg_uuid = self.session_service.save_message(self.session_id, "user", text, attachments=att_copy, parent_uuid=self.last_msg_uuid)
+            self._handle_api(text, att_copy)
         else:
-            QTimer.singleShot(400, lambda: self.history_popup.add_message(
-                "Please login first.", 
-                "ai"
-            ))
+            QTimer.singleShot(400, lambda: self.history_popup.add_message("Please login first.", "ai"))
             
-    def _handle_api(self, text):
-        self.history_popup.add_message("...", "ai") # Initial empty message bubble
+    def _handle_api(self, text, attachments):
+        self.history_popup.add_message("...", "ai") 
         
-        self.worker = APIServerWorker(self.api_client, text, self._chat_history)
+        content_payload = []
+        if text: content_payload.append({"type": "text", "text": text})
+        
+        for att in attachments:
+            if att['type'] == 'image':
+                content_payload.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{att.get('mime', 'image/png')};base64,{att['base64']}"}
+                })
+            elif att['type'] == 'file':
+                # Prepend or append the document text
+                if not content_payload:
+                    content_payload.append({"type": "text", "text": ""})
+                content_payload[0]['text'] += f"\n\n<document path='{att['name']}'>\n{att['content']}\n</document>"
+        
+        self.worker = APIServerWorker(self.api_client, content_payload if len(content_payload) > 1 else text, self._chat_history)
         self.worker.chunk_received.connect(self._on_api_chunk)
         self.worker.finished_response.connect(self._on_api_finished)
         self.worker.error_occurred.connect(self._on_api_error)
         self.worker.start()
         
-        # update memory
-        self._chat_history.append({"role": "user", "content": text})
+        self._chat_history.append({"role": "user", "content": content_payload if len(content_payload) > 1 else text})
 
     def _on_api_chunk(self, chunk):
         self.history_popup.update_last_message(chunk)
 
     def _on_api_finished(self, full_text):
         self.history_popup.update_last_message(full_text)
-        self.last_msg_uuid = self.session_service.save_message(self.session_id, "assistant", full_text, self.last_msg_uuid)
+        self.last_msg_uuid = self.session_service.save_message(self.session_id, "assistant", full_text, parent_uuid=self.last_msg_uuid)
         self._chat_history.append({"role": "assistant", "content": full_text})
 
     def _on_api_error(self, err):
