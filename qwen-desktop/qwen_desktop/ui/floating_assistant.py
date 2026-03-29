@@ -23,10 +23,7 @@ import logging
 from qwen_desktop.core.qwen_session_service import QwenSessionService
 from qwen_desktop.core.vision_capture import VisionCaptureService
 from qwen_desktop.core.pyautogui_executor import PyAutoGUIExecutor
-from qwen_desktop.core.opencv_detector import OpenCVDetector
 import uuid
-import cv2
-import numpy as np
 
 from qwen_desktop.ui.components.vision_button import VisionButton
 from qwen_desktop.ui.components.attach_button import AttachButton
@@ -419,9 +416,6 @@ class FloatingAssistant(QWidget):
         # Load QwenSessionService
         self.session_service = QwenSessionService(self.settings.get("cwd", ""))
 
-        # Initialize OpenCV detector for precise coordinate detection
-        self.opencv_detector = OpenCVDetector()
-
         # Force a NEW session explicitly on each boot
         self.session_id = str(uuid.uuid4())
         self._chat_history = []
@@ -793,39 +787,24 @@ class FloatingAssistant(QWidget):
 
     def _on_vision_screenshot(self, b64: str, meta: dict):
         """
-        Called by VisionCaptureService whenever the user interacts.
-        Builds a multimodal payload (screenshot + metadata text) and
-        sends it to Qwen automatically.
+        Called by VisionCaptureService when user sends input with vision enabled.
+        Sends screenshot + screen resolution + mouse coordinates to Qwen for analysis.
+        Qwen calculates pixel-perfect coordinates using bounding box + metadata.
         """
         if not self.is_vision_enabled:
             return
         if not self.oauth or not self.oauth.is_authenticated() or not self.api_client:
             return
 
-        # Skip if a vision API worker is already running (don't stack requests)
-        # Use atomic check-and-set to prevent race condition
-        if hasattr(self, '_worker_creating') and self._worker_creating:
-            logger.debug("Vision: worker creation in progress, skipping")
-            return
-        
-        if hasattr(self, 'worker') and self.worker and self.worker.isRunning():
-            logger.debug("Vision: skipping capture, previous worker still running")
-            return
-        
         # Skip if rate-limited (quota exceeded)
         if hasattr(self, '_rate_limited') and self._rate_limited:
             logger.debug("Vision: rate-limited, skipping API request")
-            # Still capture screenshot but don't send to API
             self.history_popup.add_message(
-                f"📸 Screenshot captured (rate-limited) | 🖱 ({mx},{my})",
+                f"📸 Screenshot captured (rate-limited) | 🖱 ({meta['mouse_x']},{meta['mouse_y']})",
                 "ai"
             )
-            self._worker_creating = False
             return
-        
-        # Set flag to prevent concurrent worker creation
-        self._worker_creating = True
-        
+
         sw = meta["screen_width"]
         sh = meta["screen_height"]
         mx = meta["mouse_x"]
@@ -837,22 +816,30 @@ class FloatingAssistant(QWidget):
         self._last_vision_w = sw
         self._last_vision_h = sh
 
-        # ── NEW: Check if mouse moved significantly (avoid redundant captures) ──
-        if hasattr(self, '_last_mouse_pos'):
-            last_x, last_y = self._last_mouse_pos
-            # Skip if mouse moved less than 50 pixels (accidental micro-movement)
-            if abs(mx - last_x) < 50 and abs(my - last_y) < 50:
-                logger.debug(f"Vision: mouse movement too small ({mx-last_x}, {my-last_y}), skipping")
-                self._worker_creating = False
-                return
-        
-        self._last_mouse_pos = (mx, my)
-        # ────────────────────────────────────────────────────────────────────────
-
+        # ── ENHANCED PROMPT: Qwen calculates pixel-perfect coordinates ──
         vision_text = (
-            f"[VISION] Screen: {sw}x{sh} | Mouse: ({mx},{my}) | "
-            f"Rel: ({xp:.3f},{yp:.3f})"
+            f"[VISION METADATA]\n"
+            f"Screen Resolution: {sw}x{sh}\n"
+            f"Current Mouse Position: ({mx}, {my})\n"
+            f"Relative Position: ({xp:.3f}, {yp:.3f}) of screen\n\n"
+            f"[TASK]\n"
+            f"Analyze the attached screenshot. The user wants to interact with a UI element.\n"
+            f"Use the current mouse position as context for what they're looking at.\n\n"
+            f"[OUTPUT FORMAT]\n"
+            f"Respond in this EXACT JSON format:\n"
+            f"{{\n"
+            f'  "action": "click",\n'
+            f'  "target": [x, y],  // Pixel-perfect coordinates for {sw}x{sh} screen\n'
+            f'  "confidence": 0.95,\n'
+            f'  "description": "What element you found and why these coordinates"\n'
+            f"}}\n\n"
+            f"[IMPORTANT]\n"
+            f"- Calculate coordinates for the FULL screen resolution ({sw}x{sh})\n"
+            f"- If element is near current mouse, use those coordinates\n"
+            f"- Be PRECISE - user will click exactly where you specify\n"
+            f"- Center of buttons/icons is the best target\n"
         )
+        # ────────────────────────────────────────────────────────────────
 
         payload = [
             {"type": "text", "text": vision_text},
@@ -861,9 +848,9 @@ class FloatingAssistant(QWidget):
 
         # Show in chat
         self.history_popup.add_message(
-            f"📸 Auto-capture  |  {sw}×{sh}  |  🖱 ({mx},{my})", "user"
+            f"📸 Vision: {sw}×{sh} | 🖱 ({mx},{my})", "user"
         )
-        self.history_popup.add_message("...", "ai")
+        self.history_popup.add_message("🤔 Analyzing...", "ai")
 
         # Expand popup if collapsed
         if not self.is_expanded:
@@ -887,9 +874,6 @@ class FloatingAssistant(QWidget):
         self.worker.finished_response.connect(self._on_api_finished)
         self.worker.error_occurred.connect(self._on_api_error)
         self.worker.start()
-        
-        # Clear creation flag after worker starts
-        self._worker_creating = False
 
         self._chat_history.append({"role": "user", "content": payload})
         
@@ -1106,25 +1090,7 @@ class FloatingAssistant(QWidget):
         target: List[int],
         confidence: float,
     ):
-        """Execute vision-based action with OpenCV refinement."""
-        # If confidence is low (<80%), try OpenCV for better precision
-        if confidence < 0.8 and hasattr(self, 'opencv_detector'):
-            logger.info(f"Low confidence ({confidence:.0%}), trying OpenCV refinement...")
-            
-            # Take a new screenshot for OpenCV analysis
-            import pyautogui
-            screenshot = pyautogui.screenshot()
-            screenshot_cv = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
-            
-            # Use OpenCV to find precise coordinates
-            # Note: This is a simple refinement - in future we can add Qwen's description
-            refined_coords = self.opencv_detector._detect_by_contour(screenshot_cv)
-            
-            if refined_coords:
-                logger.info(f"OpenCV refined coordinates: {refined_coords}")
-                target = list(refined_coords)
-                confidence = 0.9  # Higher confidence from OpenCV
-        
+        """Execute vision-based action."""
         # Low confidence - ask for confirmation
         if confidence < 0.7:
             self.history_popup.add_message(
