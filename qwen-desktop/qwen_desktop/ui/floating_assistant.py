@@ -466,9 +466,10 @@ class FloatingAssistant(QWidget):
 
     def _find_with_ui_automation(self, target_name: str) -> Optional[Tuple[int, int, str]]:
         """
-        Find element using UI Automation (100% accurate!).
+        Find element using UI Automation - FAST & SIMPLE.
         
-        Uses multiple search strategies with fuzzy matching.
+        Only searches common locations (taskbar, active window).
+        Timeout: 0.3 seconds max.
         
         Returns: (center_x, center_y, element_name) or None if not found
         """
@@ -476,125 +477,50 @@ class FloatingAssistant(QWidget):
             return None
         
         try:
-            logger.info(f"[UIA] Searching for '{target_name}'...")
+            # Normalize target
+            target = target_name.lower().replace('_', ' ').strip()
             
-            # Normalize target name
-            target_clean = target_name.lower().replace('_', ' ').replace('-', ' ').strip()
-            
-            # ── STRATEGY 1: Search all controls with fuzzy matching ──
-            logger.debug(f"[UIA] Strategy 1: Fuzzy search for '{target_clean}'...")
-            
-            root = auto.GetRootControl()
-            all_controls = root.GetChildren()
-            
-            # Also search deeper (taskbar, desktop)
+            # ── FAST SEARCH: Taskbar only (most common use case) ──
             try:
                 taskbar = auto.WindowControl(ClassName='Shell_TrayWnd')
-                if taskbar.Exists(maxSearchSeconds=0.3):
-                    all_controls.extend(taskbar.GetChildren())
+                if not taskbar.Exists(maxSearchSeconds=0.1):
+                    return None
+                
+                # Search taskbar buttons
+                for btn in taskbar.GetChildren():
+                    try:
+                        name = (btn.Name or '').lower()
+                        if target in name or name in target:
+                            rect = btn.BoundingRectangle
+                            cx = (rect.left + rect.right) // 2
+                            cy = (rect.top + rect.bottom) // 2
+                            logger.info(f"[UIA] ✅ Taskbar: '{name}' at ({cx}, {cy})")
+                            return (cx, cy, name)
+                    except:
+                        continue
+            except Exception as e:
+                logger.debug(f"[UIA] Taskbar search failed: {e}")
+            
+            # ── FAST SEARCH: Active window ──
+            try:
+                active = auto.GetForegroundControl()
+                if active:
+                    name = (active.Name or '').lower()
+                    if target in name or name in target:
+                        rect = active.BoundingRectangle
+                        cx = (rect.left + rect.right) // 2
+                        cy = (rect.top + rect.bottom) // 2
+                        logger.info(f"[UIA] ✅ Active: '{name}' at ({cx}, {cy})")
+                        return (cx, cy, name)
             except:
                 pass
             
-            best_match = None
-            best_score = 0
-            
-            for control in all_controls:
-                try:
-                    name = control.Name.lower() if control.Name else ""
-                    if not name:
-                        continue
-                    
-                    # Calculate match score
-                    score = self._calculate_match_score(target_clean, name)
-                    
-                    if score > best_score:
-                        best_score = score
-                        best_match = control
-                        logger.debug(f"[UIA] Candidate: '{name}' (score: {score:.2f})")
-                    
-                    # Early exit on high confidence
-                    if score >= 0.8:
-                        break
-                        
-                except Exception as e:
-                    logger.debug(f"[UIA] Control scan error: {e}")
-                    continue
-            
-            # Check if we found a good match
-            if best_match and best_score >= 0.5:
-                rect = best_match.BoundingRectangle
-                center_x = (rect.left + rect.right) // 2
-                center_y = (rect.top + rect.bottom) // 2
-                
-                logger.info(f"[UIA] ✅ Found '{best_match.Name}' at ({center_x}, {center_y}) (score: {best_score:.2f})")
-                logger.info(f"[UIA] Element: {best_match.ControlTypeName}")
-                
-                return (center_x, center_y, best_match.Name)
-            
-            # ── STRATEGY 2: Direct control type search ──
-            logger.debug(f"[UIA] Strategy 2: Direct control search...")
-            
-            control_types = [
-                (auto.ButtonControl, "Button"),
-                (auto.WindowControl, "Window"),
-            ]
-            
-            for control_class, type_name in control_types:
-                try:
-                    controls = control_class()
-                    if controls and controls.Exists(maxSearchSeconds=0.3):
-                        name = controls.Name.lower() if controls.Name else ""
-                        if target_clean in name or name in target_clean:
-                            rect = controls.BoundingRectangle
-                            center_x = (rect.left + rect.right) // 2
-                            center_y = (rect.top + rect.bottom) // 2
-                            
-                            logger.info(f"[UIA] ✅ Found {type_name} '{name}' at ({center_x}, {center_y})")
-                            return (center_x, center_y, name)
-                except:
-                    continue
-            
-            logger.info(f"[UIA] ❌ Element '{target_name}' not found")
+            logger.debug(f"[UIA] Not found: '{target}'")
             return None
             
         except Exception as e:
-            logger.error(f"[UIA] Error: {e}")
-            import traceback
-            logger.debug(traceback.format_exc())
+            logger.debug(f"[UIA] Error: {e}")
             return None
-    
-    def _calculate_match_score(self, target: str, name: str) -> float:
-        """
-        Calculate how well target matches control name.
-        
-        Returns: 0.0 (no match) to 1.0 (perfect match)
-        """
-        # Exact match
-        if target == name:
-            return 1.0
-        
-        # Contains match (target is substring of name)
-        if target in name:
-            return 0.8
-        
-        # Contains match (name is substring of target)
-        if name in target:
-            return 0.7
-        
-        # Word overlap
-        target_words = set(target.split())
-        name_words = set(name.split())
-        
-        if not name_words:
-            return 0.0
-        
-        overlap = len(target_words & name_words)
-        total = len(target_words | name_words)
-        
-        if total == 0:
-            return 0.0
-        
-        return overlap / total
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.Type.MouseButtonPress:
