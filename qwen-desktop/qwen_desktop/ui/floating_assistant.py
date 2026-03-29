@@ -1129,7 +1129,12 @@ Be PRECISE - center of element. Example:
         target: List[int],
         confidence: float,
     ):
-        """Execute vision-based action with NORMALIZED coordinate support."""
+        """
+        Execute vision-based action with Qwen + OpenCV refinement.
+        
+        NEW: Uses Qwen's bbox as template for sub-pixel accuracy.
+        No pre-set images needed - dynamic template from Qwen's detection!
+        """
         model_x, model_y = target[0], target[1]
 
         # Check if coordinates are normalized (0.0-1.0) or pixel coordinates
@@ -1137,7 +1142,6 @@ Be PRECISE - center of element. Example:
 
         if is_normalized:
             # ── NORMALIZED → Screen coordinates ──
-            # CRITICAL FIX: Use screenshot size, not screen size!
             if hasattr(self, '_last_screenshot_size') and hasattr(self, '_last_screen_resolution'):
                 screenshot_w, screenshot_h = self._last_screenshot_size
                 screen_w, screen_h = self._last_screen_resolution
@@ -1150,7 +1154,7 @@ Be PRECISE - center of element. Example:
                 ratio_x = screen_w / screenshot_w
                 ratio_y = screen_h / screenshot_h
                 
-                # Step 3: Convert screenshot pixels to screen coordinates
+                # Step 3: Convert to screen coordinates
                 real_x = int(ss_x * ratio_x)
                 real_y = int(ss_y * ratio_y)
                 
@@ -1158,7 +1162,21 @@ Be PRECISE - center of element. Example:
                 logger.info(f"Screenshot: {screenshot_w}×{screenshot_h}")
                 logger.info(f"Screenshot pixels: ({ss_x:.1f}, {ss_y:.1f})")
                 logger.info(f"Ratio: {ratio_x:.6f} × {ratio_y:.6f}")
-                logger.info(f"Screen: [{real_x}, {real_y}] ({screen_w}×{screen_h})")
+                logger.info(f"Screen (before refine): [{real_x}, {real_y}] ({screen_w}×{screen_h})")
+
+                # ── NEW STEP 4: OpenCV Sub-pixel Refinement ──
+                # Use Qwen's detection as template for exact center
+                try:
+                    refined_x, refined_y = self._refine_with_template(
+                        real_x, real_y, 
+                        int(ss_x), int(ss_y),
+                        screenshot_w, screenshot_h
+                    )
+                    if refined_x is not None:
+                        logger.info(f"Refined: [{real_x}, {real_y}] → [{refined_x}, {refined_y}]")
+                        real_x, real_y = refined_x, refined_y
+                except Exception as e:
+                    logger.debug(f"Refinement failed: {e}, using original coords")
 
                 target = [real_x, real_y]
             else:
@@ -1208,6 +1226,82 @@ Be PRECISE - center of element. Example:
             self.history_popup.add_message("✅ Action completed!", "ai")
         else:
             self.history_popup.add_message("❌ Action failed!", "ai")
+
+    def _refine_with_template(self, screen_x: int, screen_y: int,
+                               ss_x: int, ss_y: int,
+                               screenshot_w: int, screenshot_h: int) -> Tuple[Optional[int], Optional[int]]:
+        """
+        Use Qwen's detected element as template for sub-pixel accuracy.
+        
+        How it works:
+        1. Take small crop around Qwen's detection (40x40px)
+        2. Use this crop as template
+        3. Match template in larger search area (80x80px)
+        4. Return best match center (more accurate than Qwen's bbox center)
+        
+        No pre-set images needed - dynamic template from Qwen!
+        """
+        try:
+            import pyautogui
+            import cv2
+            import numpy as np
+            
+            # Take fresh screenshot
+            fresh_ss = pyautogui.screenshot()
+            fresh_np = np.array(fresh_ss)
+            fresh_bgr = cv2.cvtColor(fresh_np, cv2.COLOR_RGB2BGR)
+            
+            # Define template size (40x40px around Qwen's point)
+            template_size = 40
+            search_size = 80  # Search in 80x80 area
+            
+            # Extract template from current screenshot location
+            x1 = max(0, ss_x - template_size//2)
+            y1 = max(0, ss_y - template_size//2)
+            x2 = min(screenshot_w, ss_x + template_size//2)
+            y2 = min(screenshot_h, ss_y + template_size//2)
+            
+            # Convert fresh screenshot to same format
+            template = fresh_bgr[y1:y2, x1:x2].copy()
+            
+            if template.shape[0] < 10 or template.shape[1] < 10:
+                return None, None  # Template too small
+            
+            # Define search area (larger region around initial point)
+            sx1 = max(0, screen_x - search_size//2)
+            sy1 = max(0, screen_y - search_size//2)
+            sx2 = min(fresh_bgr.shape[1], screen_x + search_size//2)
+            sy2 = min(fresh_bgr.shape[0], screen_y + search_size//2)
+            
+            search_area = fresh_bgr[sy1:sy2, sx1:sx2]
+            
+            if search_area.shape[0] < template.shape[0] or search_area.shape[1] < template.shape[1]:
+                return None, None  # Search area too small
+            
+            # Template matching
+            result = cv2.matchTemplate(search_area, template, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
+            
+            if max_val < 0.6:  # Low match confidence
+                logger.debug(f"Template match low: {max_val:.3f}")
+                return None, None
+            
+            # Calculate best match center
+            template_h, template_w = template.shape[:2]
+            best_x_in_search = max_loc[0] + template_w // 2
+            best_y_in_search = max_loc[1] + template_h // 2
+            
+            # Convert to screen coordinates
+            refined_screen_x = sx1 + best_x_in_search
+            refined_screen_y = sy1 + best_y_in_search
+            
+            logger.debug(f"Template match: {max_val:.3f} at ({refined_screen_x}, {refined_screen_y})")
+            
+            return refined_screen_x, refined_screen_y
+            
+        except Exception as e:
+            logger.debug(f"Template refinement error: {e}")
+            return None, None
 
     def _on_api_error(self, err):
         self._set_send_mode()   # restore send button on error too
