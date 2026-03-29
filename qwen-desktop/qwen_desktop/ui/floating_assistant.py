@@ -812,9 +812,15 @@ class FloatingAssistant(QWidget):
         xp = meta["mouse_x_pct"]
         yp = meta["mouse_y_pct"]
 
-        # Store last resolution for coordinate scaling
-        self._last_vision_w = sw
-        self._last_vision_h = sh
+        # Store screen resolution for coordinate scaling
+        self._last_screen_resolution = (sw, sh)
+        
+        # Calculate screenshot dimensions (PIL image size, not screen resolution)
+        from PIL import Image
+        import io
+        screenshot_img = Image.open(io.BytesIO(base64.b64decode(b64)))
+        self._last_screenshot_size = (screenshot_img.width, screenshot_img.height)
+        logger.info(f"Screenshot size: {screenshot_img.width}x{screenshot_img.height}, Screen resolution: {sw}x{sh}")
 
         # ── ENHANCED PROMPT: Qwen calculates pixel-perfect coordinates ──
         vision_text = (
@@ -1091,6 +1097,29 @@ class FloatingAssistant(QWidget):
         confidence: float,
     ):
         """Execute vision-based action."""
+        model_x, model_y = target[0], target[1]
+        
+        # ── Coordinate Scaling: Image space → Real screen space ──
+        # Qwen returns coordinates in IMAGE space (screenshot pixels)
+        # We need to convert to REAL screen coordinates
+        if hasattr(self, '_last_screenshot_size') and hasattr(self, '_last_screen_resolution'):
+            img_w, img_h = self._last_screenshot_size
+            screen_w, screen_h = self._last_screen_resolution
+            
+            # Calculate scale factors
+            scale_x = screen_w / img_w
+            scale_y = screen_h / img_h
+            
+            # Convert to real screen coordinates
+            real_x = int(model_x * scale_x)
+            real_y = int(model_y * scale_y)
+            
+            logger.info(f"Scaling coordinates: [{model_x}, {model_y}] (image {img_w}x{img_h}) → [{real_x}, {real_y}] (screen {screen_w}x{screen_h})")
+            
+            # Use scaled coordinates
+            target = [real_x, real_y]
+        # ────────────────────────────────────────────────────────────────
+        
         # Low confidence - ask for confirmation
         if confidence < 0.7:
             self.history_popup.add_message(
@@ -1099,10 +1128,10 @@ class FloatingAssistant(QWidget):
             )
             # Add confirm/skip buttons (implement later)
             return
-        
+
         # Execute directly
         success = self._pyautogui_executor.execute(action, target, confidence)
-        
+
         if success:
             self.history_popup.add_message("✅ Action completed!", "ai")
         else:
