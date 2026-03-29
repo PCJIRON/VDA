@@ -1017,20 +1017,37 @@ class FloatingAssistant(QWidget):
                 
                 logger.info(f"Vision screenshot: {img_w}x{img_h} → Screen: {sw}x{sh}")
                 
-                vision_meta = (
-                    f"[VISION] Screen: {sw}x{sh} | Mouse: ({mx},{my}) | "
-                    f"Rel: ({mx/sw:.3f},{my/sh:.3f})"
-                )
-                # Prepend metadata to first text part
-                if content_payload and content_payload[0]["type"] == "text":
-                    content_payload[0]["text"] = vision_meta + "\n" + content_payload[0]["text"]
-                else:
-                    content_payload.insert(0, {"type": "text", "text": vision_meta})
-                # Append screenshot image
-                content_payload.append({
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{b64}"},
-                })
+                # ── CRITICAL: Ask for NORMALIZED coordinates (0.0-1.0) ──
+                # Yeh resolution-independent hai - koi bhi size ho, kaam karega!
+                vision_prompt = f"""
+[VISION TASK]
+Find this element: "{text if text else 'the element near mouse cursor'}"
+
+Current mouse position: ({mx}, {my}) on {sw}x{sh} screen
+
+[OUTPUT FORMAT - CRITICAL]
+Respond ONLY in this JSON format:
+{{
+    "action": "click",
+    "target_normalized": [0.0-1.0, 0.0-1.0],
+    "confidence": 0.95,
+    "description": "What you found"
+}}
+
+target_normalized[0] = x / {img_w} (0.0 = left edge, 1.0 = right edge)
+target_normalized[1] = y / {img_h} (0.0 = top edge, 1.0 = bottom edge)
+
+Be PRECISE - center of element. Example:
+{{"action": "click", "target_normalized": [0.365, 0.898], "confidence": 0.95}}
+"""
+                # ────────────────────────────────────────────────────────
+                
+                # Build payload with prompt + image
+                content_payload = [
+                    {"type": "text", "text": vision_prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                ]
+                
                 logger.info(f"Vision: attached live screenshot to user message ({len(b64)//1024}KB)")
             except Exception as e:
                 logger.warning(f"Vision screenshot attach failed: {e}")
@@ -1072,20 +1089,28 @@ class FloatingAssistant(QWidget):
 
         # ── NEW: Parse and execute vision actions (JSON format) ──────────────
         parsed = self._pyautogui_executor.parse_response(full_text)
-        
-        if parsed and "target" in parsed:
+
+        if parsed and ("target" in parsed or "target_normalized" in parsed):
             # Extract action details from JSON
             action = parsed.get("action", "click")
-            target = parsed["target"]
+            
+            # Support BOTH normalized and pixel coordinates
+            if "target_normalized" in parsed:
+                target = parsed["target_normalized"]  # [0.0-1.0, 0.0-1.0]
+                logger.info(f"Parsed NORMALIZED target: {target}")
+            else:
+                target = parsed["target"]  # [x, y] in pixels
+                logger.info(f"Parsed PIXEL target: {target}")
+            
             confidence = parsed.get("confidence", 1.0)
             description = parsed.get("description", "")
-            
+
             # Show what we're doing
             self.history_popup.add_message(
                 f"🎯 {description}\nExecuting: {action} at {target}",
                 "ai",
             )
-            
+
             # Execute after short delay (user can see what's happening)
             QTimer.singleShot(
                 500,
@@ -1104,28 +1129,45 @@ class FloatingAssistant(QWidget):
         target: List[int],
         confidence: float,
     ):
-        """Execute vision-based action."""
+        """Execute vision-based action with NORMALIZED coordinate support."""
         model_x, model_y = target[0], target[1]
         
-        # ── Coordinate Scaling: Image space → Real screen space ──
-        # Qwen returns coordinates in IMAGE space (screenshot pixels)
-        # We need to convert to REAL screen coordinates
-        if hasattr(self, '_last_screenshot_size') and hasattr(self, '_last_screen_resolution'):
-            img_w, img_h = self._last_screenshot_size
-            screen_w, screen_h = self._last_screen_resolution
-            
-            # Calculate scale factors
-            scale_x = screen_w / img_w
-            scale_y = screen_h / img_h
-            
-            # Convert to real screen coordinates
-            real_x = int(model_x * scale_x)
-            real_y = int(model_y * scale_y)
-            
-            logger.info(f"Scaling coordinates: [{model_x}, {model_y}] (image {img_w}x{img_h}) → [{real_x}, {real_y}] (screen {screen_w}x{screen_h})")
-            
-            # Use scaled coordinates
-            target = [real_x, real_y]
+        # Check if coordinates are normalized (0.0-1.0) or pixel coordinates
+        is_normalized = (0.0 <= model_x <= 1.0) and (0.0 <= model_y <= 1.0)
+        
+        if is_normalized:
+            # ── NORMALIZED → Screen coordinates ──
+            if hasattr(self, '_last_screen_resolution'):
+                screen_w, screen_h = self._last_screen_resolution
+                
+                # Convert normalized to screen pixels
+                real_x = int(model_x * screen_w)
+                real_y = int(model_y * screen_h)
+                
+                logger.info(f"Normalized coords: [{model_x:.4f}, {model_y:.4f}] → Screen: [{real_x}, {real_y}] ({screen_w}x{screen_h})")
+                
+                target = [real_x, real_y]
+            else:
+                logger.error("No screen resolution stored! Using normalized coords as-is")
+        else:
+            # ── Pixel coordinates: Apply scaling ──
+            if hasattr(self, '_last_screenshot_size') and hasattr(self, '_last_screen_resolution'):
+                img_w, img_h = self._last_screenshot_size
+                screen_w, screen_h = self._last_screen_resolution
+                
+                # Calculate scale factors
+                scale_x = screen_w / img_w
+                scale_y = screen_h / img_h
+                
+                # Convert to real screen coordinates
+                real_x = int(model_x * scale_x)
+                real_y = int(model_y * scale_y)
+                
+                logger.info(f"Scaling coords: [{model_x}, {model_y}] (image {img_w}x{img_h}) → [{real_x}, {real_y}] (screen {screen_w}x{screen_h})")
+                
+                target = [real_x, real_y]
+            else:
+                logger.warning("No sizing info, using pixel coords as-is")
         # ────────────────────────────────────────────────────────────────
         
         # Low confidence - ask for confirmation
