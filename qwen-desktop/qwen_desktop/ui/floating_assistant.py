@@ -812,6 +812,17 @@ class FloatingAssistant(QWidget):
             logger.debug("Vision: skipping capture, previous worker still running")
             return
         
+        # Skip if rate-limited (quota exceeded)
+        if hasattr(self, '_rate_limited') and self._rate_limited:
+            logger.debug("Vision: rate-limited, skipping API request")
+            # Still capture screenshot but don't send to API
+            self.history_popup.add_message(
+                f"📸 Screenshot captured (rate-limited) | 🖱 ({mx},{my})",
+                "ai"
+            )
+            self._worker_creating = False
+            return
+        
         # Set flag to prevent concurrent worker creation
         self._worker_creating = True
         
@@ -825,6 +836,18 @@ class FloatingAssistant(QWidget):
         # Store last resolution for coordinate scaling
         self._last_vision_w = sw
         self._last_vision_h = sh
+
+        # ── NEW: Check if mouse moved significantly (avoid redundant captures) ──
+        if hasattr(self, '_last_mouse_pos'):
+            last_x, last_y = self._last_mouse_pos
+            # Skip if mouse moved less than 50 pixels (accidental micro-movement)
+            if abs(mx - last_x) < 50 and abs(my - last_y) < 50:
+                logger.debug(f"Vision: mouse movement too small ({mx-last_x}, {my-last_y}), skipping")
+                self._worker_creating = False
+                return
+        
+        self._last_mouse_pos = (mx, my)
+        # ────────────────────────────────────────────────────────────────────────
 
         vision_text = (
             f"[VISION] Screen: {sw}x{sh} | Mouse: ({mx},{my}) | "
@@ -1122,6 +1145,21 @@ class FloatingAssistant(QWidget):
     def _on_api_error(self, err):
         self._set_send_mode()   # restore send button on error too
         self.history_popup.update_last_message(f"API Error: {err}")
+        
+        # Handle rate limit errors gracefully
+        if "429" in str(err) or "insufficient_quota" in str(err):
+            self.history_popup.add_message(
+                "⚠️ **Rate Limit Reached**\n\n"
+                "Your OAuth free tier quota (1000 requests/day) has been exceeded.\n\n"
+                "**Options:**\n"
+                "1. Wait until midnight UTC for quota reset\n"
+                "2. Add an API key in settings for unlimited access\n"
+                "3. Continue using without vision mode\n\n"
+                "Vision mode will continue capturing screenshots, but won't send API requests.",
+                "ai"
+            )
+            # Mark rate-limited state
+            self._rate_limited = True
 
     # ── Send ↔ Stop button toggle ───────────────────────────────────────────────────────
 
