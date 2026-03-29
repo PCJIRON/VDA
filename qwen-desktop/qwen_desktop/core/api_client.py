@@ -3,6 +3,9 @@ Qwen API client.
 
 Uses OpenAI SDK with OAuth token (same as qwen-code's QwenContentGenerator).
 OAuth token is used as API key with DashScope provider.
+
+Vision mode: injects a system prompt that teaches Qwen to analyse screenshots
+and respond with [PYAUTOGUI]...[/PYAUTOGUI] automation blocks.
 """
 
 from typing import Optional, AsyncGenerator, List, Dict, Any
@@ -104,11 +107,50 @@ class APIClient:
         logger.info(f"Qwen API client initialized with DashScope provider")
         logger.info(f"Base URL: {endpoint}")
 
+    # ── Vision system prompt ────────────────────────────────────────────────
+    VISION_SYSTEM_PROMPT = (
+        "You are an expert desktop automation assistant with vision capabilities.\n\n"
+        "=== YOUR TASK ===\n"
+        "When you receive a screenshot with mouse coordinates:\n"
+        "1. Analyze all visible UI elements\n"
+        "2. Find the target element based on user request\n"
+        "3. Return EXACT pixel coordinates [x, y] for the action\n\n"
+        "=== COORDINATE RULES ===\n"
+        "- Screen resolution: {W}x{H}\n"
+        "- Valid X range: 0 to {W}\n"
+        "- Valid Y range: 0 to {H}\n"
+        "- Origin (0,0) is TOP-LEFT corner\n"
+        "- X increases going RIGHT\n"
+        "- Y increases going DOWN\n\n"
+        "=== OUTPUT FORMAT ===\n"
+        "Respond in this EXACT JSON format:\n"
+        "{\n"
+        '  "action": "click",\n'
+        '  "target": [x, y],\n'
+        '  "confidence": 0.95,\n'
+        '  "description": "Found Submit button at bottom of form"\n'
+        "}\n\n"
+        "Action types: click, double_click, right_click, move, drag_start, drag_end\n\n"
+        "=== IMPORTANT ===\n"
+        "- Be PRECISE - user will click exactly where you specify\n"
+        "- Center of buttons/icons is usually the best target\n"
+        "- If multiple elements match, pick the most prominent one\n"
+        "- If unsure, ask for clarification in description\n"
+        "- Never return coordinates outside screen bounds\n\n"
+        "=== ALTERNATIVE FORMAT ===\n"
+        "You can also use PyAutoGUI format:\n"
+        "[PYAUTOGUI]\n"
+        "pyautogui.moveTo(x, y, duration=0.3)\n"
+        "pyautogui.click(x, y)\n"
+        "[/PYAUTOGUI]"
+    )
+
     async def send_message(
         self,
         message: str,
         conversation_history: List[Dict[str, Any]],
         attachments: Optional[List] = None,
+        vision_mode: bool = False,
     ) -> AsyncGenerator[str, None]:
         """Send a message and stream the response (same as qwen-code).
         
@@ -116,6 +158,7 @@ class APIClient:
             message: User message.
             conversation_history: Previous messages.
             attachments: Optional file attachments.
+            vision_mode: If True, inject vision+automation system prompt.
             
         Yields:
             Response content chunks.
@@ -141,6 +184,17 @@ class APIClient:
             
             # Build messages list
             messages = conversation_history.copy()
+
+            # Inject vision system prompt when vision mode is active
+            if vision_mode:
+                # Prepend system message (only once — don't duplicate)
+                has_system = any(m.get("role") == "system" for m in messages)
+                if not has_system:
+                    messages.insert(0, {
+                        "role": "system",
+                        "content": self.VISION_SYSTEM_PROMPT
+                    })
+
             messages.append({"role": "user", "content": message})
             
             logger.info(f"Sending {len(messages)} messages...")
