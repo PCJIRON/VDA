@@ -2,96 +2,98 @@
 
 **Phase:** 1  
 **Date:** 2026-03-29  
+**Updated:** 2026-03-29 (No OpenCV/OCR - Pure Qwen Vision)
 
 ---
 
 ## Implementation Decisions
 
-### Detection Approach: Hybrid
+### Detection Approach: Qwen Vision + Mouse Coordinates
 
-**Decision:** Combine OpenCV template matching + pytesseract OCR
+**Decision:** Use Qwen's vision capabilities with mouse coordinates - NO OpenCV, NO OCR
 
 **Rationale:**
-- Template matching excels at UI elements (buttons, icons)
-- OCR detects text labels, input fields, menus
-- Combined approach achieves >90% accuracy target
-- Fallback: if template fails, try OCR; if OCR fails, try template
+- Existing vision mode already captures screenshots automatically
+- Mouse coordinates + screen resolution Qwen ko context deta hai
+- Qwen calculation karke exact target location find kar sakta hai
+- Zero dependencies, zero templates, zero training
+- Qwen already trained hai UI elements recognize karne ke liye
 
 **Implementation Strategy:**
 ```python
-def detect_element(name, template=None, text=None):
-    # Try template matching first
-    if template:
-        result = template_match(template)
-        if result.confidence > 0.9:
-            return result
+# Jab user input aata hai:
+# 1. Auto screenshot
+# 2. Get mouse coordinates
+# 3. Send to Qwen with metadata
+# 4. Qwen returns target coordinates
+# 5. Execute click/drag/drop
+
+def send_vision_request(user_input):
+    screenshot = pyautogui.screenshot()
+    mouse_x, mouse_y = pyautogui.position()
+    screen_w, screen_h = get_screen_size()
     
-    # Fallback to OCR
-    if text:
-        result = ocr_match(text)
-        if result:
-            return result
+    # Qwen ko bhejo with metadata
+    payload = f"""
+    [VISION METADATA]
+    Screen: {screen_w}x{screen_h}
+    Mouse: ({mouse_x}, {mouse_y})
     
-    return None
+    [USER REQUEST]
+    {user_input}
+    
+    Analyze screenshot and return target coordinates for action.
+    """
 ```
 
 ---
 
-### Resolution Support: All Resolutions
+### Resolution Support: All Resolutions (Native)
 
-**Decision:** Support 1080p, 1440p, 4K with automatic scaling
+**Decision:** Support 1080p, 1440p, 4K - Qwen handles scaling internally
 
 **Supported Resolutions:**
-- 1920x1080 (Full HD) - baseline
+- 1920x1080 (Full HD)
 - 2560x1440 (QHD)
 - 3840x2160 (4K UHD)
-- Custom resolutions (detected automatically)
+- Custom (auto-detected)
 
 **Scaling Strategy:**
-- Store templates at 1080p (baseline)
-- Scale templates dynamically based on current resolution
-- Use relative coordinates (0.0-1.0) internally
-- Convert to absolute pixels only for PyAutoGUI
+- Qwen receives actual screen resolution
+- Qwen internally calculates relative positions
+- Returns absolute coordinates for current screen
+- No manual scaling needed
 
 **Implementation:**
 ```python
-class CoordinateScaler:
-    def __init__(self, base_width=1920, base_height=1080):
-        self.base_w, self.base_h = base_width, base_height
-    
-    def scale(self, x, y):
-        curr_w, curr_h = get_screen_size()
-        scale_x = curr_w / self.base_w
-        scale_y = curr_h / self.base_h
-        return x * scale_x, y * scale_y
-    
-    def to_relative(self, x, y):
-        return x / self.base_w, y / self.base_h
+# Qwen already understands coordinate scaling
+# Just send actual resolution + mouse position
+# Qwen returns correct coordinates
 ```
 
 ---
 
-### Dependencies: OpenCV + pytesseract
+### Dependencies: NONE (Existing Only)
 
-**Decision:** Add both dependencies for full capability
+**Decision:** No new dependencies - use existing pyautogui + Pillow
 
-**New Dependencies:**
+**Existing Stack:**
 ```txt
-opencv-python>=4.8.0
-opencv-contrib-python>=4.8.0  # For extra features
-pytesseract>=0.3.10
-tesseract-ocr  # System package (Linux/macOS)
+pyautogui>=0.9.54  # Already installed
+Pillow>=10.0.0     # Already installed
+pynput>=1.7.6      # Already installed (for listeners)
 ```
 
-**Installation Notes:**
-- Windows: `pip install opencv-python pytesseract`
-  - Tesseract installer: https://github.com/UB-Mannheim/tesseract/wiki
-- macOS: `brew install tesseract` + `pip install ...`
-- Linux: `sudo apt install tesseract-ocr` + `pip install ...`
+**No Installation Required:**
+- ✅ No OpenCV
+- ✅ No pytesseract
+- ✅ No tesseract system package
+- ✅ Everything already works!
 
-**Fallback Plan:**
-- If OpenCV fails to install: provide pre-built wheel
-- If tesseract unavailable: graceful degradation to template-only mode
+**Benefits:**
+- Zero setup complexity
+- Cross-platform (Windows/macOS/Linux)
+- No system dependencies
 
 ---
 

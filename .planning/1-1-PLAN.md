@@ -1,399 +1,359 @@
-# Phase 1 Plan: Wave 1 - Element Detection Core
+# Phase 1 Plan: Wave 1 - Enhanced Vision Mode
 
 **Wave:** 1  
 **Priority:** High  
-**Estimated Time:** 4 hours  
+**Estimated Time:** 2 hours  
 
 ---
 
 ## Objective
 
-Implement the core element detection engine with OpenCV template matching and pytesseract OCR integration.
+Enhance existing vision mode with better prompt engineering and structured JSON output for coordinate prediction.
+
+**NO OpenCV, NO OCR, NO new dependencies** - Pure Qwen Vision!
 
 ---
 
 ## Tasks
 
-### Task 1.1: Create ElementDetector Class
+### Task 1.1: Enhance Vision System Prompt
 
-**File:** `qwen_desktop/core/element_detector.py`
+**File:** `qwen_desktop/core/api_client.py` (modify VISION_SYSTEM_PROMPT)
 
 **Implementation:**
 
 ```python
+# Enhanced system prompt for better coordinate prediction
+VISION_SYSTEM_PROMPT = """
+You are an expert UI automation assistant with vision capabilities.
+
+=== YOUR TASK ===
+When you receive a screenshot with mouse coordinates:
+1. Analyze all visible UI elements
+2. Find the target element based on user request
+3. Return EXACT pixel coordinates [x, y] for the action
+
+=== COORDINATE RULES ===
+- Screen resolution: {screen_w}x{screen_h}
+- Valid X range: 0 to {screen_w}
+- Valid Y range: 0 to {screen_h}
+- Origin (0,0) is TOP-LEFT corner
+- X increases going RIGHT
+- Y increases going DOWN
+
+=== OUTPUT FORMAT ===
+Respond in this EXACT JSON format:
+{
+  "action": "click",
+  "target": [x, y],
+  "confidence": 0.95,
+  "description": "Found Submit button at bottom of form"
+}
+
+Action types: click, double_click, right_click, move, drag_start, drag_end
+
+=== IMPORTANT ===
+- Be PRECISE - user will click exactly where you specify
+- Center of buttons/icons is usually the best target
+- If multiple elements match, pick the most prominent one
+- If unsure, ask for clarification in description
+- Never return coordinates outside screen bounds
 """
-Element Detection Engine.
-
-Combines OpenCV template matching with pytesseract OCR for
-accurate UI element detection across multiple resolutions.
-"""
-
-import cv2
-import numpy as np
-import pyautogui
-from typing import Optional, Dict, Any, List
-from dataclasses import dataclass
-
-from .coordinate_scaler import CoordinateScaler
-from .element_cache import ElementCache
-from ..utils.ocr import OCRService
-
-
-@dataclass
-class DetectionResult:
-    """Result of element detection."""
-    name: str
-    confidence: float
-    bbox: tuple  # (x1, y1, x2, y2)
-    center_x: int
-    center_y: int
-    method: str  # 'template' or 'ocr'
-    scaled: bool
-
-
-class ElementDetector:
-    """Main element detection engine."""
-    
-    def __init__(self, base_resolution: tuple = (1920, 1080)):
-        """Initialize detector.
-        
-        Args:
-            base_resolution: Base resolution for templates (default: 1080p).
-        """
-        self.scaler = CoordinateScaler(base_resolution)
-        self.cache = ElementCache(default_ttl=5.0)
-        self.ocr_service = OCRService()
-    
-    def detect(
-        self,
-        name: str,
-        template_path: Optional[str] = None,
-        text_query: Optional[str] = None,
-        use_cache: bool = True,
-    ) -> Optional[DetectionResult]:
-        """Detect element by template or text.
-        
-        Args:
-            name: Element name for caching.
-            template_path: Path to template image (optional).
-            text_query: Text to search for (optional).
-            use_cache: Whether to use caching (default: True).
-        
-        Returns:
-            DetectionResult if found, None otherwise.
-        """
-        # Check cache
-        if use_cache:
-            cache_key = f"{name}:{template_path}:{text_query}"
-            cached = self.cache.get(cache_key)
-            if cached:
-                return cached
-        
-        # Capture screenshot
-        screenshot = self._capture_screen()
-        
-        # Try template matching
-        if template_path:
-            result = self._match_template(screenshot, template_path)
-            if result:
-                if use_cache:
-                    self.cache.set(cache_key, result)
-                return result
-        
-        # Try OCR
-        if text_query:
-            result = self.ocr_service.find_text(screenshot, text_query)
-            if result:
-                detection_result = DetectionResult(
-                    name=name,
-                    confidence=result['confidence'] / 100.0,
-                    bbox=result['bbox'],
-                    center_x=result['center'][0],
-                    center_y=result['center'][1],
-                    method='ocr',
-                    scaled=False,
-                )
-                if use_cache:
-                    self.cache.set(cache_key, detection_result)
-                return detection_result
-        
-        return None
-    
-    def _capture_screen(self) -> np.ndarray:
-        """Capture current screen as OpenCV image."""
-        screenshot = pyautogui.screenshot()
-        return cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
-    
-    def _match_template(
-        self,
-        screenshot: np.ndarray,
-        template_path: str,
-        threshold: float = 0.9,
-    ) -> Optional[DetectionResult]:
-        """Match template against screenshot.
-        
-        Args:
-            screenshot: Current screen as OpenCV image.
-            template_path: Path to template image.
-            threshold: Confidence threshold (default: 0.9).
-        
-        Returns:
-            DetectionResult if found, None otherwise.
-        """
-        # Load template
-        template = cv2.imread(template_path, cv2.IMREAD_COLOR)
-        if template is None:
-            return None
-        
-        # Match
-        result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-        
-        if max_val >= threshold:
-            h, w = template.shape[:2]
-            return DetectionResult(
-                name=template_path,
-                confidence=max_val,
-                bbox=(max_loc[0], max_loc[1], max_loc[0] + w, max_loc[1] + h),
-                center_x=max_loc[0] + w // 2,
-                center_y=max_loc[1] + h // 2,
-                method='template',
-                scaled=False,
-            )
-        
-        return None
 ```
 
 **Verification:**
-- [ ] Class initializes without errors
-- [ ] detect() method accepts template_path and text_query
-- [ ] Returns DetectionResult with correct fields
-- [ ] Cache is checked before detection
+- [ ] System prompt includes screen resolution context
+- [ ] Clear coordinate rules defined
+- [ ] JSON output format specified
+- [ ] Action types documented
 
 ---
 
-### Task 1.2: Create CoordinateScaler
+### Task 1.2: Add JSON Response Parser
 
-**File:** `qwen_desktop/core/coordinate_scaler.py`
+**File:** `qwen_desktop/core/pyautogui_executor.py` (new file)
 
 **Implementation:**
 
 ```python
 """
-Coordinate Scaling for Multi-Resolution Support.
+PyAutoGUI Executor with JSON Response Parsing.
 
-Converts between relative (0.0-1.0) and absolute coordinates,
-and scales templates across different screen resolutions.
+Parses Qwen's JSON output and executes mouse actions.
 """
 
+import json
+import re
+import logging
+from typing import Optional, Dict, Any, List, Tuple
 import pyautogui
-from typing import Tuple, Optional
+
+logger = logging.getLogger(__name__)
 
 
-class CoordinateScaler:
-    """Scale coordinates across different resolutions."""
+class PyAutoGUIExecutor:
+    """Execute mouse actions based on Qwen's coordinates."""
     
-    def __init__(self, base_resolution: Tuple[int, int] = (1920, 1080)):
-        """Initialize scaler.
+    # Action types
+    CLICK = "click"
+    DOUBLE_CLICK = "double_click"
+    RIGHT_CLICK = "right_click"
+    MOVE = "move"
+    DRAG_START = "drag_start"
+    DRAG_END = "drag_end"
+    
+    def __init__(self, safety_margin: int = 10):
+        """Initialize executor.
         
         Args:
-            base_resolution: Base resolution (width, height).
+            safety_margin: Pixels to keep within screen bounds.
         """
-        self.base_w, self.base_h = base_resolution
+        self.safety_margin = safety_margin
+        self.screen_w, self.screen_h = pyautogui.size()
     
-    def get_current_resolution(self) -> Tuple[int, int]:
-        """Get current screen resolution."""
-        size = pyautogui.size()
-        return size.width, size.height
-    
-    def scale_to_screen(
-        self,
-        rel_x: float,
-        rel_y: float,
-    ) -> Tuple[int, int]:
-        """Convert relative coordinates to absolute pixels.
+    def parse_response(self, text: str) -> Optional[Dict[str, Any]]:
+        """Parse JSON from Qwen's response.
         
         Args:
-            rel_x: Relative X (0.0-1.0).
-            rel_y: Relative Y (0.0-1.0).
+            text: Response text (may contain JSON in markdown).
         
         Returns:
-            Absolute (x, y) in pixels.
+            Parsed dict or None if parsing fails.
         """
-        curr_w, curr_h = self.get_current_resolution()
-        abs_x = int(rel_x * curr_w)
-        abs_y = int(rel_y * curr_h)
-        return abs_x, abs_y
+        # Try direct JSON parse first
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+        
+        # Look for JSON in markdown code blocks
+        json_match = re.search(r'```json\s*(.*?)\s*```', text, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(1))
+            except json.JSONDecodeError:
+                pass
+        
+        # Look for JSON-like structure
+        json_match = re.search(r'\{[^}]*"action"[^}]*\}', text, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(0))
+            except json.JSONDecodeError:
+                pass
+        
+        logger.warning(f"Failed to parse JSON from: {text[:200]}")
+        return None
     
-    def to_relative(
-        self,
-        abs_x: int,
-        abs_y: int,
-    ) -> Tuple[float, float]:
-        """Convert absolute pixels to relative coordinates.
+    def validate_coordinates(self, x: int, y: int) -> Tuple[int, int]:
+        """Validate and clamp coordinates to screen bounds.
         
         Args:
-            abs_x: Absolute X in pixels.
-            abs_y: Absolute Y in pixels.
+            x: X coordinate.
+            y: Y coordinate.
         
         Returns:
-            Relative (x, y) in 0.0-1.0 range.
+            Clamped (x, y) within valid range.
         """
-        rel_x = abs_x / self.base_w
-        rel_y = abs_y / self.base_h
-        return rel_x, rel_y
+        x = max(self.safety_margin, min(x, self.screen_w - self.safety_margin))
+        y = max(self.safety_margin, min(y, self.screen_h - self.safety_margin))
+        return x, y
     
-    def scale_bbox(
+    def execute(
         self,
-        bbox: Tuple[int, int, int, int],
-    ) -> Tuple[int, int, int, int]:
-        """Scale bounding box to current resolution.
+        action: str,
+        target: List[int],
+        confidence: float = 1.0,
+        **kwargs,
+    ) -> bool:
+        """Execute mouse action.
         
         Args:
-            bbox: (x1, y1, x2, y2) at base resolution.
+            action: Action type (click, double_click, etc.).
+            target: [x, y] coordinates.
+            confidence: Confidence score (0.0-1.0).
+            **kwargs: Additional action-specific params.
         
         Returns:
-            Scaled (x1, y1, x2, y2) for current resolution.
+            True if executed successfully.
         """
-        curr_w, curr_h = self.get_current_resolution()
-        scale_x = curr_w / self.base_w
-        scale_y = curr_h / self.base_h
+        if len(target) != 2:
+            logger.error(f"Invalid target coordinates: {target}")
+            return False
         
-        x1, y1, x2, y2 = bbox
-        return (
-            int(x1 * scale_x),
-            int(y1 * scale_y),
-            int(x2 * scale_x),
-            int(y2 * scale_y),
-        )
+        x, y = self.validate_coordinates(target[0], target[1])
+        
+        logger.info(f"Executing {action} at [{x}, {y}] (confidence: {confidence})")
+        
+        try:
+            if action == self.CLICK:
+                pyautogui.click(x, y)
+            elif action == self.DOUBLE_CLICK:
+                pyautogui.doubleClick(x, y)
+            elif action == self.RIGHT_CLICK:
+                pyautogui.rightClick(x, y)
+            elif action == self.MOVE:
+                pyautogui.moveTo(x, y, duration=0.3)
+            elif action == self.DRAG_START:
+                pyautogui.moveTo(x, y, duration=0.3)
+                pyautogui.mouseDown()
+            elif action == self.DRAG_END:
+                pyautogui.moveTo(x, y, duration=0.3)
+                pyautogui.mouseUp()
+            else:
+                logger.warning(f"Unknown action: {action}")
+                return False
+            
+            return True
+        except Exception as e:
+            logger.error(f"Action execution failed: {e}")
+            return False
+    
+    def execute_drag(
+        self,
+        start: List[int],
+        end: List[int],
+        duration: float = 0.5,
+    ) -> bool:
+        """Execute drag operation.
+        
+        Args:
+            start: [x1, y1] start coordinates.
+            end: [x2, y2] end coordinates.
+            duration: Drag duration in seconds.
+        
+        Returns:
+            True if executed successfully.
+        """
+        try:
+            x1, y1 = self.validate_coordinates(start[0], start[1])
+            x2, y2 = self.validate_coordinates(end[0], end[1])
+            
+            pyautogui.moveTo(x1, y1, duration=duration/2)
+            pyautogui.drag(x2 - x1, y2 - y1, duration=duration/2)
+            
+            return True
+        except Exception as e:
+            logger.error(f"Drag execution failed: {e}")
+            return False
 ```
 
 **Verification:**
-- [ ] scale_to_screen() converts 0.5, 0.5 to screen center
-- [ ] to_relative() converts pixels to 0.0-1.0 range
-- [ ] scale_bbox() scales all four coordinates correctly
+- [ ] JSON parsing handles markdown code blocks
+- [ ] Coordinate validation clamps to screen bounds
+- [ ] All action types supported
+- [ ] Error handling in place
 
 ---
 
-### Task 1.3: Create ElementCache
+### Task 1.3: Integrate Parser with Floating Assistant
 
-**File:** `qwen_desktop/core/element_cache.py`
+**File:** `qwen_desktop/ui/floating_assistant.py` (modify `_on_api_finished`)
 
 **Implementation:**
 
 ```python
-"""
-Element Caching for Performance Optimization.
+# Add at top of file
+from qwen_desktop.core.pyautogui_executor import PyAutoGUIExecutor
 
-Time-based cache to avoid redundant element detection.
-"""
+# In FloatingAssistant.__init__
+self.pyautogui_executor = PyAutoGUIExecutor()
 
-import time
-from typing import Dict, Optional, Any
-from dataclasses import dataclass
-
-
-@dataclass
-class CachedElement:
-    """Cached detection result."""
-    result: Any
-    timestamp: float
-    ttl: float  # Time to live in seconds
-
-
-class ElementCache:
-    """Time-based element cache."""
+# Modify _on_api_finished method
+def _on_api_finished(self, full_text):
+    self._set_send_mode()  # restore send button
+    self.history_popup.update_last_message(full_text)
     
-    def __init__(self, default_ttl: float = 5.0):
-        """Initialize cache.
-        
-        Args:
-            default_ttl: Default time to live in seconds.
-        """
-        self.cache: Dict[str, CachedElement] = {}
-        self.default_ttl = default_ttl
+    # Save to session
+    self.last_msg_uuid = self.session_service.save_message(
+        self.session_id, "assistant", full_text, parent_uuid=self.last_msg_uuid
+    )
+    self._chat_history.append({"role": "assistant", "content": full_text})
     
-    def get(self, key: str) -> Optional[Any]:
-        """Get cached result.
-        
-        Args:
-            key: Cache key.
-        
-        Returns:
-            Cached result or None if expired/missing.
-        """
-        if key not in self.cache:
-            return None
-        
-        cached = self.cache[key]
-        if time.time() - cached.timestamp > cached.ttl:
-            del self.cache[key]
-            return None
-        
-        return cached.result
+    # ── NEW: Parse and execute vision actions ──────────────────────────────
+    parsed = self.pyautogui_executor.parse_response(full_text)
     
-    def set(
-        self,
-        key: str,
-        result: Any,
-        ttl: Optional[float] = None,
-    ) -> None:
-        """Cache a result.
+    if parsed and "target" in parsed:
+        # Extract action details
+        action = parsed.get("action", "click")
+        target = parsed["target"]
+        confidence = parsed.get("confidence", 1.0)
+        description = parsed.get("description", "")
         
-        Args:
-            key: Cache key.
-            result: Detection result to cache.
-            ttl: Time to live (optional, uses default if not specified).
-        """
-        self.cache[key] = CachedElement(
-            result=result,
-            timestamp=time.time(),
-            ttl=ttl or self.default_ttl,
+        # Show what we're doing
+        self.history_popup.add_message(
+            f"🎯 {description}\nExecuting: {action} at {target}",
+            "ai",
+        )
+        
+        # Execute after short delay (user can see what's happening)
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(
+            500,
+            lambda: self._execute_vision_action(action, target, confidence),
         )
     
-    def invalidate(self, key: Optional[str] = None) -> None:
-        """Invalidate cache entries.
-        
-        Args:
-            key: Specific key to invalidate, or None to clear all.
-        """
-        if key:
-            self.cache.pop(key, None)
-        else:
-            self.cache.clear()
+    # ── PyAutoGUI command detection (existing) ────────────────────────────
+    if self._pyautogui_executor.has_commands(full_text):
+        commands = self._pyautogui_executor.extract_commands(full_text)
+        if commands:
+            self._handle_pyautogui_commands(commands)
+
+def _execute_vision_action(
+    self,
+    action: str,
+    target: List[int],
+    confidence: float,
+):
+    """Execute vision-based action with confirmation."""
+    # Low confidence - ask for confirmation
+    if confidence < 0.7:
+        self.history_popup.add_message(
+            f"⚠️ Low confidence ({confidence:.0%}). Should I proceed?",
+            "ai",
+        )
+        # Add confirm/skip buttons (implement later)
+        return
     
-    def __len__(self) -> int:
-        """Get number of cached entries."""
-        return len(self.cache)
+    # Execute directly
+    success = self.pyautogui_executor.execute(action, target, confidence)
+    
+    if success:
+        self.history_popup.add_message("✅ Action completed!", "ai")
+    else:
+        self.history_popup.add_message("❌ Action failed!", "ai")
 ```
 
 **Verification:**
-- [ ] get() returns cached value before TTL expires
-- [ ] get() returns None after TTL expires
-- [ ] invalidate(key) removes specific entry
-- [ ] invalidate() clears all entries
+- [ ] Parser imported
+- [ ] JSON response parsed automatically
+- [ ] Coordinates validated before execution
+- [ ] User sees what's happening
+- [ ] Low confidence asks for confirmation
 
 ---
 
 ## Verification Checklist
 
-- [ ] ElementDetector class created with detect() method
-- [ ] CoordinateScaler handles all resolutions
-- [ ] ElementCache with TTL support
-- [ ] Type hints on all functions
-- [ ] Docstrings on all public methods
-- [ ] No circular imports
+- [ ] Enhanced system prompt with coordinate rules
+- [ ] JSON parser handles all response formats
+- [ ] Coordinate validation prevents out-of-bounds clicks
+- [ ] All action types supported (click, drag, etc.)
+- [ ] Floating assistant integrates parser
+- [ ] User feedback shows what's happening
 
 ---
 
 ## Output
 
 **Files Created:**
-- `qwen_desktop/core/element_detector.py` - Main detection engine
-- `qwen_desktop/core/coordinate_scaler.py` - Resolution scaling
-- `qwen_desktop/core/element_cache.py` - Caching layer
+- `qwen_desktop/core/pyautogui_executor.py` - JSON parser + action executor
 
-**Lines of Code:** ~300
+**Files Modified:**
+- `qwen_desktop/core/api_client.py` - Enhanced VISION_SYSTEM_PROMPT
+- `qwen_desktop/ui/floating_assistant.py` - Integrate parser
+
+**Lines of Code:** ~200
 
 ---
 
