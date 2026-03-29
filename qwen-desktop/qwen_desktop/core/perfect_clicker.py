@@ -387,13 +387,13 @@ class PerfectClicker:
 
     def _ask_qwen_single(self, img_bgr: np.ndarray, target: str,
                          send_w: int, send_h: int) -> List[Dict[str, Any]]:
-        """Single-scale Qwen query"""
+        """Single-scale Qwen query with coordinate range detection"""
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         buf = io.BytesIO()
         Image.fromarray(img_rgb).save(buf, format="PNG")
         b64 = base64.b64encode(buf.getvalue()).decode()
 
-        prompt = f"""You are a PRECISE UI element locator with 100% accuracy.
+        prompt = f"""You are a PRECISE UI element locator.
 
 Image size: {send_w}×{send_h} pixels.
 
@@ -442,6 +442,8 @@ Example: [{{"x1": 0.42, "y1": 0.31, "x2": 0.58, "y2": 0.37, "confidence": 0.97, 
             resp.raise_for_status()
 
             raw = resp.json()["choices"][0]["message"]["content"].strip()
+            logger.debug(f"[QWEN RAW] {raw[:200]}")
+
             if "```" in raw:
                 raw = raw.split("```")[1]
                 if raw.startswith("json"):
@@ -449,7 +451,39 @@ Example: [{{"x1": 0.42, "y1": 0.31, "x2": 0.58, "y2": 0.37, "confidence": 0.97, 
             raw = raw.strip()
 
             results = json.loads(raw)
-            return results if isinstance(results, list) else []
+            
+            # Validate and normalize coordinates (handle both 0-1 and 0-1000 ranges)
+            normalized_results = []
+            for r in results if isinstance(results, list) else []:
+                x1 = r.get("x1", 0)
+                y1 = r.get("y1", 0)
+                x2 = r.get("x2", 0)
+                y2 = r.get("y2", 0)
+                
+                # Detect if coordinates are in 0-1000 range
+                if x1 > 1.0 or y1 > 1.0 or x2 > 1.0 or y2 > 1.0:
+                    # Convert from 0-1000 to 0-1
+                    x1 /= 1000.0
+                    y1 /= 1000.0
+                    x2 /= 1000.0
+                    y2 /= 1000.0
+                    logger.debug(f"[COORD] Converted from 0-1000 to 0-1: [{x1:.4f}, {y1:.4f}, {x2:.4f}, {y2:.4f}]")
+                
+                # Clamp to valid range
+                x1 = max(0.0, min(1.0, x1))
+                y1 = max(0.0, min(1.0, y1))
+                x2 = max(0.0, min(1.0, x2))
+                y2 = max(0.0, min(1.0, y2))
+                
+                r["x1"] = x1
+                r["y1"] = y1
+                r["x2"] = x2
+                r["y2"] = y2
+                
+                normalized_results.append(r)
+            
+            logger.info(f"[QWEN] Found {len(normalized_results)} candidate(s)")
+            return normalized_results
 
         except Exception as e:
             logger.error(f"[API ERR] {e}")
