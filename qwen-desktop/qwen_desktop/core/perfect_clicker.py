@@ -278,17 +278,31 @@ class SelfCalibrator:
     def screenshot_px_to_screen(self, ss_x: float, ss_y: float,
                                   region_offset: Tuple[int, int] = (0, 0)
                                  ) -> Tuple[int, int]:
-        """Universal conversion: screenshot pixel → screen coordinate"""
+        """
+        Universal conversion: screenshot pixel → screen coordinate
+        
+        FIX: Order of operations corrected
+        1. Convert relative screenshot pixel to relative screen coordinate
+        2. THEN add absolute region offset (already in screen coords)
+        """
         if self.calibration is None:
             self.calibrate()
 
         c = self.calibration
-        abs_ss_x = ss_x + region_offset[0]
-        abs_ss_y = ss_y + region_offset[1]
+        
+        # ── CRITICAL FIX: Order of Operations ──
+        # WRONG: (ss_x + region_offset) * ratio  ← Scales the offset too!
+        # RIGHT: (ss_x * ratio) + region_offset  ← Scale only screenshot pixels
+        
+        # 1. Convert RELATIVE screenshot pixel to RELATIVE screen coordinate
+        rel_screen_x = ss_x * c["ratio_x"]
+        rel_screen_y = ss_y * c["ratio_y"]
 
-        screen_x = abs_ss_x * c["ratio_x"]
-        screen_y = abs_ss_y * c["ratio_y"]
+        # 2. Add ABSOLUTE region offset (already in pyautogui/screen coords)
+        screen_x = rel_screen_x + region_offset[0]
+        screen_y = rel_screen_y + region_offset[1]
 
+        # Clamp to screen bounds
         screen_x = max(0.0, min(screen_x, c["pyautogui_w"] - 1))
         screen_y = max(0.0, min(screen_y, c["pyautogui_h"] - 1))
 
@@ -561,31 +575,28 @@ Example: [{{"x1": 0.42, "y1": 0.31, "x2": 0.58, "y2": 0.37, "confidence": 0.97, 
 
     def _visual_centroid(self, img_bgr: np.ndarray,
                          bbox_norm: Dict[str, float]) -> Tuple[float, float]:
-        """Find visual centroid using cv2.moments (not geometric center)"""
+        """
+        Find centroid of element.
+        
+        FIX: Use geometric center instead of OpenCV contour detection.
+        
+        Why: UI elements have text/icons inside them. Otsu thresholding
+        picks up the text contour, not the button background. This causes
+        the centroid to shift towards the text instead of being centered.
+        
+        Qwen's bounding box is already accurate. Geometric center of bbox
+        is more reliable than contour-based centroid for UI automation.
+        """
         h, w = img_bgr.shape[:2]
-        x1, y1 = int(bbox_norm["x1"] * w), int(bbox_norm["y1"] * h)
-        x2, y2 = int(bbox_norm["x2"] * w), int(bbox_norm["y2"] * h)
-        crop = img_bgr[y1:y2, x1:x2]
-
-        if crop.size == 0:
-            return (x1 + x2) / 2.0, (y1 + y2) / 2.0
-
-        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-        _, thresh = cv2.threshold(gray, 0, 255,
-                                   cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL,
-                                        cv2.CHAIN_APPROX_SIMPLE)
-
-        if contours:
-            largest = max(contours, key=cv2.contourArea)
-            if cv2.contourArea(largest) > 4:
-                M = cv2.moments(largest)
-                if M["m00"] != 0:
-                    cx_crop = M["m10"] / M["m00"]
-                    cy_crop = M["m01"] / M["m00"]
-                    return x1 + cx_crop, y1 + cy_crop
-
-        return (x1 + x2) / 2.0, (y1 + y2) / 2.0
+        x1, y1 = bbox_norm["x1"] * w, bbox_norm["y1"] * h
+        x2, y2 = bbox_norm["x2"] * w, bbox_norm["y2"] * h
+        
+        # Simple geometric center of bounding box
+        cx = (x1 + x2) / 2.0
+        cy = (y1 + y2) / 2.0
+        
+        logger.debug(f"[CENTROID] Geometric center: ({cx:.2f}, {cy:.2f})")
+        return cx, cy
 
     def _subpixel_refine(self, img_bgr: np.ndarray, bbox_norm: Dict[str, float],
                          cx_img: float, cy_img: float) -> Tuple[float, float]:

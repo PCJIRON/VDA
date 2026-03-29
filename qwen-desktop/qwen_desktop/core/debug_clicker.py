@@ -119,7 +119,12 @@ Coordinates normalized 0.0-1.0"""
         return result
 
     def _visual_centroid(self, img_bgr: np.ndarray, bbox_norm: dict) -> tuple:
-        """Visual centroid with tracing"""
+        """
+        Geometric center of bounding box.
+        
+        FIX: Removed OpenCV contour detection - it picks up text instead
+        of button background, causing centroid to shift.
+        """
         h, w = img_bgr.shape[:2]
 
         # Check if coordinates are in 0-1 or 0-1000 range
@@ -139,47 +144,21 @@ Coordinates normalized 0.0-1.0"""
             print(f"[COORD RANGE] Detected 0-1 range")
 
         # Convert to pixel coordinates
-        x1 = int((x1_raw / scale) * w)
-        y1 = int((y1_raw / scale) * h)
-        x2 = int((x2_raw / scale) * w)
-        y2 = int((y2_raw / scale) * h)
+        x1 = (x1_raw / scale) * w
+        y1 = (y1_raw / scale) * h
+        x2 = (x2_raw / scale) * w
+        y2 = (y2_raw / scale) * h
 
         print(f"\n[BBOX PIXELS]")
         print(f"  Image size: {w}×{h}")
         print(f"  Normalized: [{x1_raw:.4f}, {y1_raw:.4f}, {x2_raw:.4f}, {y2_raw:.4f}]")
-        print(f"  Pixel bbox: [{x1}, {y1}, {x2}, {y2}]\n")
+        print(f"  Pixel bbox: [{x1:.0f}, {y1:.0f}, {x2:.0f}, {y2:.0f}]\n")
 
-        crop = img_bgr[y1:y2, x1:x2]
-
-        if crop.size == 0:
-            print(f"[CENTROID] Empty crop, using geometric center")
-            return (x1 + x2) / 2.0, (y1 + y2) / 2.0
-
-        # Visual centroid
-        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        if contours:
-            largest = max(contours, key=cv2.contourArea)
-            if cv2.contourArea(largest) > 4:
-                M = cv2.moments(largest)
-                if M["m00"] != 0:
-                    cx_crop = M["m10"] / M["m00"]
-                    cy_crop = M["m01"] / M["m00"]
-
-                    cx = x1 + cx_crop
-                    cy = y1 + cy_crop
-
-                    print(f"[CENTROID] Contour method")
-                    print(f"  Crop centroid: ({cx_crop:.2f}, {cy_crop:.2f})")
-                    print(f"  Image centroid: ({cx:.2f}, {cy:.2f})\n")
-
-                    return cx, cy
-
-        # Fallback
-        cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-        print(f"[CENTROID] Geometric fallback: ({cx:.2f}, {cy:.2f})\n")
+        # Simple geometric center (more reliable for UI elements)
+        cx = (x1 + x2) / 2.0
+        cy = (y1 + y2) / 2.0
+        
+        print(f"[CENTROID] Geometric center: ({cx:.2f}, {cy:.2f})\n")
         return cx, cy
 
     def click(self, target: str):
@@ -204,9 +183,11 @@ Coordinates normalized 0.0-1.0"""
         # 3. Visual centroid
         cx, cy = self._visual_centroid(img_bgr, result)
 
-        # 4. Convert to screen
-        screen_x = cx * self.calibration["ratio_x"]
-        screen_y = cy * self.calibration["ratio_y"]
+        # 4. Convert to screen (FIX: scale first, THEN add offset)
+        # WRONG: (cx + region_x) * ratio  ← Scales the offset!
+        # RIGHT: (cx * ratio) + region_x  ← Scale only screenshot pixels
+        screen_x = (cx * self.calibration["ratio_x"])  # No region in simple debug
+        screen_y = (cy * self.calibration["ratio_y"])
 
         print(f"[CONVERSION]")
         print(f"  Centroid: ({cx:.2f}, {cy:.2f})")
