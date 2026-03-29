@@ -998,12 +998,25 @@ class FloatingAssistant(QWidget):
         if self.is_vision_enabled:
             try:
                 import pyautogui, io, base64
+                from PIL import Image
+                
                 sw, sh = pyautogui.size()
                 mx, my = pyautogui.position()
                 img = pyautogui.screenshot()
+                
+                # Get ACTUAL screenshot size (PIL image dimensions)
+                img_w, img_h = img.size
+                
+                # Store for coordinate scaling (CRITICAL FIX!)
+                self._last_screen_resolution = (sw, sh)
+                self._last_screenshot_size = (img_w, img_h)
+                
                 buf = io.BytesIO()
-                img.save(buf, format="PNG", optimize=True)
+                img.save(buf, format="PNG", optimize=True, compress_level=1)
                 b64 = base64.b64encode(buf.getvalue()).decode()
+                
+                logger.info(f"Vision screenshot: {img_w}x{img_h} → Screen: {sw}x{sh}")
+                
                 vision_meta = (
                     f"[VISION] Screen: {sw}x{sh} | Mouse: ({mx},{my}) | "
                     f"Rel: ({mx/sw:.3f},{my/sh:.3f})"
@@ -1018,8 +1031,6 @@ class FloatingAssistant(QWidget):
                     "type": "image_url",
                     "image_url": {"url": f"data:image/png;base64,{b64}"},
                 })
-                self._last_vision_w = sw
-                self._last_vision_h = sh
                 logger.info(f"Vision: attached live screenshot to user message ({len(b64)//1024}KB)")
             except Exception as e:
                 logger.warning(f"Vision screenshot attach failed: {e}")
