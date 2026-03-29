@@ -22,7 +22,10 @@ import logging
 from qwen_desktop.core.qwen_session_service import QwenSessionService
 from qwen_desktop.core.vision_capture import VisionCaptureService
 from qwen_desktop.core.pyautogui_executor import PyAutoGUIExecutor
+from qwen_desktop.core.opencv_detector import OpenCVDetector
 import uuid
+import cv2
+import numpy as np
 
 from qwen_desktop.ui.components.vision_button import VisionButton
 from qwen_desktop.ui.components.attach_button import AttachButton
@@ -414,6 +417,9 @@ class FloatingAssistant(QWidget):
 
         # Load QwenSessionService
         self.session_service = QwenSessionService(self.settings.get("cwd", ""))
+
+        # Initialize OpenCV detector for precise coordinate detection
+        self.opencv_detector = OpenCVDetector()
 
         # Force a NEW session explicitly on each boot
         self.session_id = str(uuid.uuid4())
@@ -1065,7 +1071,25 @@ class FloatingAssistant(QWidget):
         target: List[int],
         confidence: float,
     ):
-        """Execute vision-based action with confirmation."""
+        """Execute vision-based action with OpenCV refinement."""
+        # If confidence is low (<80%), try OpenCV for better precision
+        if confidence < 0.8 and hasattr(self, 'opencv_detector'):
+            logger.info(f"Low confidence ({confidence:.0%}), trying OpenCV refinement...")
+            
+            # Take a new screenshot for OpenCV analysis
+            import pyautogui
+            screenshot = pyautogui.screenshot()
+            screenshot_cv = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
+            
+            # Use OpenCV to find precise coordinates
+            # Note: This is a simple refinement - in future we can add Qwen's description
+            refined_coords = self.opencv_detector._detect_by_contour(screenshot_cv)
+            
+            if refined_coords:
+                logger.info(f"OpenCV refined coordinates: {refined_coords}")
+                target = list(refined_coords)
+                confidence = 0.9  # Higher confidence from OpenCV
+        
         # Low confidence - ask for confirmation
         if confidence < 0.7:
             self.history_popup.add_message(
