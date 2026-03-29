@@ -1,13 +1,16 @@
 """
 Floating AI Assistant Widget.
 Matches the exact expanding, glowing, modern UI from the React design.
+Includes Vision Capture (auto-screenshot on interaction) and
+PyAutoGUI desktop automation via [PYAUTOGUI]...[/PYAUTOGUI] blocks.
 """
 from PyQt6.QtWidgets import (
     QWidget, QLineEdit, QHBoxLayout, QPushButton, QLabel, QVBoxLayout, QScrollArea,
-    QApplication, QGraphicsDropShadowEffect, QFrame, QMenu, QFileDialog, QSizePolicy
+    QApplication, QGraphicsDropShadowEffect, QFrame, QMenu, QFileDialog, QSizePolicy,
+    QTextEdit
 )
 from PyQt6.QtCore import (
-    Qt, QPropertyAnimation, QRect, QPoint, QEasingCurve, pyqtSignal, 
+    Qt, QPropertyAnimation, QRect, QPoint, QEasingCurve, pyqtSignal,
     QTimer, QEvent, QThread, QVariantAnimation
 )
 from PyQt6.QtGui import (
@@ -15,7 +18,10 @@ from PyQt6.QtGui import (
 )
 import datetime
 import asyncio
+import logging
 from qwen_desktop.core.qwen_session_service import QwenSessionService
+from qwen_desktop.core.vision_capture import VisionCaptureService
+from qwen_desktop.core.pyautogui_executor import PyAutoGUIExecutor
 import uuid
 
 from qwen_desktop.ui.components.vision_button import VisionButton
@@ -23,18 +29,20 @@ from qwen_desktop.ui.components.attach_button import AttachButton
 from qwen_desktop.ui.components.send_button import SendButton
 from qwen_desktop.ui.components.settings_button import SettingsButton
 
+logger = logging.getLogger(__name__)
+
 class APIServerWorker(QThread):
     """QThread worker to run DashScope API calls without blocking the UI."""
     chunk_received = pyqtSignal(str)
     finished_response = pyqtSignal(str)
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, api_client, message, history):
+    def __init__(self, api_client, message, history, vision_mode=False):
         super().__init__()
         self.api_client = api_client
         self.message = message
-        # Shallow copy of history
         self.history = list(history)
+        self.vision_mode = vision_mode
         self._full_response = ""
 
     def run(self):
@@ -45,7 +53,9 @@ class APIServerWorker(QThread):
 
     async def _stream(self):
         try:
-            async for chunk in self.api_client.send_message(self.message, self.history):
+            async for chunk in self.api_client.send_message(
+                self.message, self.history, vision_mode=self.vision_mode
+            ):
                 self._full_response += chunk
                 self.chunk_received.emit(self._full_response)
             self.finished_response.emit(self._full_response)
@@ -189,7 +199,16 @@ class ChatHistoryPopup(QWidget):
         title = QLabel("✨ Chat History")
         title.setStyleSheet("color: white; font-weight: bold; background: transparent;")
         h_layout.addWidget(title)
-        
+
+        # Vision status label (hidden by default)
+        self.vision_status_lbl = QLabel("")
+        self.vision_status_lbl.setStyleSheet(
+            "color: #86efac; font-size: 11px; font-weight: bold; "
+            "background: rgba(0,0,0,0.25); border-radius: 6px; padding: 2px 8px;"
+        )
+        self.vision_status_lbl.hide()
+        h_layout.addWidget(self.vision_status_lbl)
+
         self.close_btn = QPushButton("✕")
         self.close_btn.setFixedSize(24, 24)
         self.close_btn.setStyleSheet("""
@@ -200,7 +219,7 @@ class ChatHistoryPopup(QWidget):
         """)
         h_layout.addStretch()
         h_layout.addWidget(self.close_btn)
-        
+
         layout.addWidget(header)
         
         # Content Split
@@ -340,56 +359,82 @@ class ChatHistoryPopup(QWidget):
         bar = self.scroll.verticalScrollBar()
         bar.setValue(bar.maximum())
 
+    def set_vision_status(self, status: str):
+        """Update the vision status label in the popup header."""
+        if status:
+            self.vision_status_lbl.setText(status)
+            self.vision_status_lbl.show()
+        else:
+            self.vision_status_lbl.hide()
+
 
 class FloatingAssistant(QWidget):
     """The main expanding button acting as the full interface."""
     def __init__(self, settings, parent=None):
         super().__init__(parent)
         self.settings = settings
-        
+
         self.is_hovered = False
         self.is_expanded = False
         self.is_dragging = False
         self.is_vision_enabled = False
-        
+
+        # PyAutoGUI execution mode: 'ask_first' or 'auto'
+        self._pyautogui_mode = PyAutoGUIExecutor.ASK_FIRST
+        # Last screenshot resolution (for coordinate scaling)
+        self._last_vision_w = 1920
+        self._last_vision_h = 1080
+
         self.drag_position = QPoint()
         self._press_position = QPoint()
-        
+
         self.collapsed_size = 70
         self.expanded_size = 450
-        
+
         self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint | 
+            Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.WindowStaysOnTopHint |
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.resize(self.collapsed_size, self.collapsed_size)
-        
+
         screen = QApplication.primaryScreen().availableGeometry()
-        self.move(int(screen.width() - self.collapsed_size - 40), int(screen.height() - self.collapsed_size - 40))
-        
+        self.move(
+            int(screen.width() - self.collapsed_size - 40),
+            int(screen.height() - self.collapsed_size - 40),
+        )
+
         self.history_popup = ChatHistoryPopup()
         self.history_popup.close_btn.clicked.connect(self.toggle_expand)
-        
+
         self._setup_ui()
         self._setup_context_menu()
         self._check_auth()
-        
+
         # Load QwenSessionService
         self.session_service = QwenSessionService(self.settings.get("cwd", ""))
-        
+
         # Force a NEW session explicitly on each boot
         self.session_id = str(uuid.uuid4())
         self._chat_history = []
         self.last_msg_uuid = None
         self.messages_count = 0
         self.staged_files = []
-            
+
+        # Vision capture service
+        self._vision_service = VisionCaptureService(self)
+        self._vision_service.screenshot_ready.connect(self._on_vision_screenshot)
+
+        # PyAutoGUI executor
+        self._pyautogui_executor = PyAutoGUIExecutor(mode=self._pyautogui_mode)
+
         # Hook up sessions logic
         self.load_session_clicked = lambda u: self._switch_to_session(u)
-        self.history_popup.populate_sessions(self.session_service.get_all_sessions(), self.load_session_clicked)
-        
+        self.history_popup.populate_sessions(
+            self.session_service.get_all_sessions(), self.load_session_clicked
+        )
+
         # Global click tracker
         QApplication.instance().installEventFilter(self)
 
@@ -427,24 +472,27 @@ class FloatingAssistant(QWidget):
             }
         """)
         self.input_field.returnPressed.connect(self.submit_message)
-        
-        self.vision_btn = VisionButton()
-        self.vision_btn.clicked.connect(self.toggle_vision)
-        
-        self.attach_btn = AttachButton()
-        self.attach_btn.clicked.connect(self.select_files)
-        
+
         self.send_btn = SendButton()
         self.send_btn.clicked.connect(self.submit_message)
-        
+        # _is_sending tracks whether we're mid-API call (send → stop mode)
+        self._is_sending = False
+
+        self.vision_btn = VisionButton()
+        self.vision_btn.clicked.connect(self.toggle_vision)
+
+        self.attach_btn = AttachButton()
+        self.attach_btn.clicked.connect(self.select_files)
+
         self.settings_btn = SettingsButton()
         self.settings_btn.clicked.connect(self.toggle_auth)
-        
+
+        # Layout: [settings] [input] [send/stop] [vision] [attach]
         self.input_layout.addWidget(self.settings_btn)
         self.input_layout.addWidget(self.input_field, 1)
+        self.input_layout.addWidget(self.send_btn)   # right next to input
         self.input_layout.addWidget(self.vision_btn)
         self.input_layout.addWidget(self.attach_btn)
-        self.input_layout.addWidget(self.send_btn)
         
         self.input_wrapper.setFixedWidth(self.expanded_size - self.collapsed_size)
         self.input_wrapper.hide()
@@ -684,10 +732,125 @@ class FloatingAssistant(QWidget):
             self.history_popup.add_message("Login successful! ✨", "ai")
             
     def toggle_vision(self):
+        """Start/stop the vision capture service and update UI indicators."""
         self.is_vision_enabled = not self.is_vision_enabled
         self.vision_btn.is_green = self.is_vision_enabled
-        self.input_field.setPlaceholderText("Ask with Vision..." if self.is_vision_enabled else "Ask Qwen AI...")
+
+        if self.is_vision_enabled:
+            # Delay listener start by 1.0s so the click that toggled vision
+            # doesn't immediately trigger a screenshot capture.
+            self._vision_start_ignore_until = __import__('time').time() + 1.0
+            QTimer.singleShot(1000, self._delayed_vision_start)
+            self.input_field.setPlaceholderText("👁 Vision active — interact to capture...")
+            self.history_popup.add_message(
+                "👁 Vision mode ON\nAny mouse click or key press will send a screenshot to Qwen.",
+                "ai",
+            )
+            self._update_vision_status_bar()
+        else:
+            self._vision_service.stop()
+            self.input_field.setPlaceholderText("Ask Qwen AI...")
+            self.history_popup.add_message("👁 Vision mode OFF", "ai")
+            self._update_vision_status_bar()
+
         self.update()
+
+    def _delayed_vision_start(self):
+        """Start the pynput listeners after the toggle-click delay has passed."""
+        if not self.is_vision_enabled:
+            return  # User disabled vision in the meantime
+        ok = self._vision_service.start()
+        if not ok:
+            self.is_vision_enabled = False
+            self.vision_btn.is_green = False
+            self.history_popup.add_message(
+                "⚠ Vision requires pyautogui + pynput.\n"
+                "Run: pip install pyautogui pynput Pillow",
+                "ai",
+            )
+            self._update_vision_status_bar()
+            self.update()
+
+    def _update_vision_status_bar(self):
+        """Show/hide the vision status label in the popup header."""
+        try:
+            import pyautogui
+            sw, sh = pyautogui.size()
+            mx, my = pyautogui.position()
+            status = f"👁 VISION ON  |  {sw}×{sh}  |  🖱 ({mx},{my})" if self.is_vision_enabled else ""
+        except Exception:
+            status = "👁 VISION ON" if self.is_vision_enabled else ""
+        self.history_popup.set_vision_status(status)
+
+    # ── Vision screenshot handler ────────────────────────────────────────────
+
+    def _on_vision_screenshot(self, b64: str, meta: dict):
+        """
+        Called by VisionCaptureService whenever the user interacts.
+        Builds a multimodal payload (screenshot + metadata text) and
+        sends it to Qwen automatically.
+        """
+        if not self.is_vision_enabled:
+            return
+        if not self.oauth or not self.oauth.is_authenticated() or not self.api_client:
+            return
+
+        # Skip if a vision API worker is already running (don't stack requests)
+        if hasattr(self, 'worker') and self.worker and self.worker.isRunning():
+            logger.debug("Vision: skipping capture, previous worker still running")
+            return
+
+        sw = meta["screen_width"]
+        sh = meta["screen_height"]
+        mx = meta["mouse_x"]
+        my = meta["mouse_y"]
+        xp = meta["mouse_x_pct"]
+        yp = meta["mouse_y_pct"]
+
+        # Store last resolution for coordinate scaling
+        self._last_vision_w = sw
+        self._last_vision_h = sh
+
+        vision_text = (
+            f"[VISION] Screen: {sw}x{sh} | Mouse: ({mx},{my}) | "
+            f"Rel: ({xp:.3f},{yp:.3f})"
+        )
+
+        payload = [
+            {"type": "text", "text": vision_text},
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+        ]
+
+        # Show in chat
+        self.history_popup.add_message(
+            f"📸 Auto-capture  |  {sw}×{sh}  |  🖱 ({mx},{my})", "user"
+        )
+        self.history_popup.add_message("...", "ai")
+
+        # Expand popup if collapsed
+        if not self.is_expanded:
+            self.toggle_expand()
+
+        # Update status bar with live coords
+        self._update_vision_status_bar()
+
+        # Save to session
+        self.last_msg_uuid = self.session_service.save_message(
+            self.session_id, "user", vision_text,
+            attachments=[{"type": "image", "base64": b64, "mime": "image/png", "name": "screenshot.png"}],
+            parent_uuid=self.last_msg_uuid,
+        )
+
+        # Fire API (vision_mode=True injects expert system prompt)
+        self.worker = APIServerWorker(
+            self.api_client, payload, self._chat_history, vision_mode=True
+        )
+        self.worker.chunk_received.connect(self._on_api_chunk)
+        self.worker.finished_response.connect(self._on_api_finished)
+        self.worker.error_occurred.connect(self._on_api_error)
+        self.worker.start()
+
+        self._chat_history.append({"role": "user", "content": payload})
         
     def select_files(self):
         from pathlib import Path
@@ -797,11 +960,42 @@ class FloatingAssistant(QWidget):
             QTimer.singleShot(400, lambda: self.history_popup.add_message("Please login first.", "ai"))
             
     def _handle_api(self, text, attachments):
-        self.history_popup.add_message("...", "ai") 
-        
+        self.history_popup.add_message("...", "ai")
+
         content_payload = []
-        if text: content_payload.append({"type": "text", "text": text})
-        
+        if text:
+            content_payload.append({"type": "text", "text": text})
+
+        # ── Feature 1: Vision ON → auto-attach live screenshot to user message ──
+        if self.is_vision_enabled:
+            try:
+                import pyautogui, io, base64
+                sw, sh = pyautogui.size()
+                mx, my = pyautogui.position()
+                img = pyautogui.screenshot()
+                buf = io.BytesIO()
+                img.save(buf, format="PNG", optimize=True)
+                b64 = base64.b64encode(buf.getvalue()).decode()
+                vision_meta = (
+                    f"[VISION] Screen: {sw}x{sh} | Mouse: ({mx},{my}) | "
+                    f"Rel: ({mx/sw:.3f},{my/sh:.3f})"
+                )
+                # Prepend metadata to first text part
+                if content_payload and content_payload[0]["type"] == "text":
+                    content_payload[0]["text"] = vision_meta + "\n" + content_payload[0]["text"]
+                else:
+                    content_payload.insert(0, {"type": "text", "text": vision_meta})
+                # Append screenshot image
+                content_payload.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                })
+                self._last_vision_w = sw
+                self._last_vision_h = sh
+                logger.info(f"Vision: attached live screenshot to user message ({len(b64)//1024}KB)")
+            except Exception as e:
+                logger.warning(f"Vision screenshot attach failed: {e}")
+
         for att in attachments:
             if att['type'] == 'image':
                 content_payload.append({
@@ -809,26 +1003,310 @@ class FloatingAssistant(QWidget):
                     "image_url": {"url": f"data:{att.get('mime', 'image/png')};base64,{att['base64']}"}
                 })
             elif att['type'] == 'file':
-                # Prepend or append the document text
                 if not content_payload:
                     content_payload.append({"type": "text", "text": ""})
                 content_payload[0]['text'] += f"\n\n<document path='{att['name']}'>\n{att['content']}\n</document>"
-        
-        self.worker = APIServerWorker(self.api_client, content_payload if len(content_payload) > 1 else text, self._chat_history)
+
+        self.worker = APIServerWorker(
+            self.api_client,
+            content_payload if len(content_payload) > 1 else text,
+            self._chat_history,
+            vision_mode=self.is_vision_enabled,
+        )
         self.worker.chunk_received.connect(self._on_api_chunk)
         self.worker.finished_response.connect(self._on_api_finished)
         self.worker.error_occurred.connect(self._on_api_error)
         self.worker.start()
-        
+
         self._chat_history.append({"role": "user", "content": content_payload if len(content_payload) > 1 else text})
 
     def _on_api_chunk(self, chunk):
         self.history_popup.update_last_message(chunk)
 
     def _on_api_finished(self, full_text):
+        self._set_send_mode()   # restore send button
         self.history_popup.update_last_message(full_text)
-        self.last_msg_uuid = self.session_service.save_message(self.session_id, "assistant", full_text, parent_uuid=self.last_msg_uuid)
+        self.last_msg_uuid = self.session_service.save_message(
+            self.session_id, "assistant", full_text, parent_uuid=self.last_msg_uuid
+        )
         self._chat_history.append({"role": "assistant", "content": full_text})
+
+        # ── NEW: Parse and execute vision actions (JSON format) ──────────────
+        parsed = self.pyautogui_executor.parse_response(full_text)
+        
+        if parsed and "target" in parsed:
+            # Extract action details from JSON
+            action = parsed.get("action", "click")
+            target = parsed["target"]
+            confidence = parsed.get("confidence", 1.0)
+            description = parsed.get("description", "")
+            
+            # Show what we're doing
+            self.history_popup.add_message(
+                f"🎯 {description}\nExecuting: {action} at {target}",
+                "ai",
+            )
+            
+            # Execute after short delay (user can see what's happening)
+            QTimer.singleShot(
+                500,
+                lambda: self._execute_vision_action(action, target, confidence),
+            )
+        
+        # ── PyAutoGUI command detection (existing fallback) ─────────────────
+        if self._pyautogui_executor.has_commands(full_text):
+            commands = self._pyautogui_executor.extract_commands(full_text)
+            if commands:
+                self._handle_pyautogui_commands(commands)
+    
+    def _execute_vision_action(
+        self,
+        action: str,
+        target: List[int],
+        confidence: float,
+    ):
+        """Execute vision-based action with confirmation."""
+        # Low confidence - ask for confirmation
+        if confidence < 0.7:
+            self.history_popup.add_message(
+                f"⚠️ Low confidence ({confidence:.0%}). Should I proceed?",
+                "ai",
+            )
+            # Add confirm/skip buttons (implement later)
+            return
+        
+        # Execute directly
+        success = self.pyautogui_executor.execute(action, target, confidence)
+        
+        if success:
+            self.history_popup.add_message("✅ Action completed!", "ai")
+        else:
+            self.history_popup.add_message("❌ Action failed!", "ai")
+
+    def _on_api_error(self, err):
+        self._set_send_mode()   # restore send button on error too
+        self.history_popup.update_last_message(f"API Error: {err}")
+
+    # ── Send ↔ Stop button toggle ───────────────────────────────────────────────────────
+
+    def _set_stop_mode(self):
+        """Convert send button to red stop button during API call."""
+        self._is_sending = True
+        self.send_btn.setStyleSheet("""
+            QPushButton {
+                background: #ef4444;
+                border: none; border-radius: 8px;
+                color: white; font-size: 16px; font-weight: bold;
+            }
+            QPushButton:hover { background: #dc2626; }
+        """)
+        try:
+            self.send_btn.clicked.disconnect()
+        except Exception:
+            pass
+        self.send_btn.clicked.connect(self._stop_worker)
+        self.send_btn.setText("■")
+
+    def _set_send_mode(self):
+        """Restore send button to normal state."""
+        self._is_sending = False
+        self.send_btn.setStyleSheet("")   # BaseButton paints itself
+        self.send_btn.setText("")         # BaseButton draws the icon
+        try:
+            self.send_btn.clicked.disconnect()
+        except Exception:
+            pass
+        self.send_btn.clicked.connect(self.submit_message)
+        self.send_btn.update()
+
+    def _stop_worker(self):
+        """Abort the running API worker and restore UI."""
+        if hasattr(self, 'worker') and self.worker:
+            try:
+                self.worker.chunk_received.disconnect()
+                self.worker.finished_response.disconnect()
+                self.worker.error_occurred.disconnect()
+            except Exception:
+                pass
+            self.worker.quit()
+            self.worker.wait(300)
+            if self.worker.isRunning():
+                self.worker.terminate()
+        self._set_send_mode()
+        self.history_popup.update_last_message("⏹ Stopped")
+
+    def _handle_pyautogui_commands(self, commands: list):
+        """Always auto-execute pyautogui commands, then send feedback screenshot."""
+        ok, result = self._pyautogui_executor.execute(
+            commands, self._last_vision_w, self._last_vision_h
+        )
+        self.history_popup.add_message(f"🤖 Executed:\n{result}", "ai")
+        # Send feedback screenshot after screen settles
+        QTimer.singleShot(600, lambda: self._send_pyautogui_feedback(result))
+
+    # ── Ask-first preview card removed ── always auto now ────────────────────
+
+    def _show_pyautogui_preview_card(self, commands: list, preview: str):
+        """Insert a confirm card in the chat popup for pyautogui commands."""
+        card = QFrame()
+        card.setStyleSheet("""
+            QFrame {
+                background: #1e1e2e;
+                border: 1px solid #6366f1;
+                border-radius: 10px;
+                margin: 4px 16px;
+            }
+        """)
+        c_layout = QVBoxLayout(card)
+        c_layout.setContentsMargins(12, 10, 12, 10)
+        c_layout.setSpacing(6)
+
+        title = QLabel("🤖 PyAutoGUI Commands Detected")
+        title.setStyleSheet("color: #a5b4fc; font-weight: bold; font-size: 12px; background: transparent;")
+        c_layout.addWidget(title)
+
+        code_lbl = QTextEdit()
+        code_lbl.setReadOnly(True)
+        code_lbl.setPlainText(preview)
+        code_lbl.setStyleSheet(
+            "background: #12121f; color: #e2e8f0; font-family: 'Consolas', monospace; "
+            "font-size: 11px; border: none; border-radius: 6px;"
+        )
+        code_lbl.setFixedHeight(min(120, 24 * len(commands) + 30))
+        c_layout.addWidget(code_lbl)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+
+        run_btn = QPushButton("▶  Run")
+        run_btn.setStyleSheet("""
+            QPushButton {
+                background: #6366f1; color: white; border: none;
+                border-radius: 6px; padding: 6px 18px; font-weight: bold;
+            }
+            QPushButton:hover { background: #4f46e5; }
+        """)
+        run_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        skip_btn = QPushButton("✕  Skip")
+        skip_btn.setStyleSheet("""
+            QPushButton {
+                background: #374151; color: #9ca3af; border: none;
+                border-radius: 6px; padding: 6px 14px;
+            }
+            QPushButton:hover { background: #4b5563; color: white; }
+        """)
+        skip_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        auto_btn = QPushButton("⚡ Set Auto")
+        auto_btn.setStyleSheet("""
+            QPushButton {
+                background: #065f46; color: #6ee7b7; border: none;
+                border-radius: 6px; padding: 6px 12px; font-size: 11px;
+            }
+            QPushButton:hover { background: #047857; }
+        """)
+        auto_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        btn_row.addWidget(run_btn)
+        btn_row.addWidget(skip_btn)
+        btn_row.addStretch()
+        btn_row.addWidget(auto_btn)
+        c_layout.addLayout(btn_row)
+
+        def _run():
+            ok, result = self._pyautogui_executor.execute(
+                commands, self._last_vision_w, self._last_vision_h
+            )
+            code_lbl.setPlainText(result)
+            run_btn.setEnabled(False)
+            run_btn.setText("✅ Done")
+            skip_btn.setEnabled(False)
+            # ── Feature 2: send feedback screenshot after execution ──────────────
+            QTimer.singleShot(600, lambda: self._send_pyautogui_feedback(result))
+
+        def _skip():
+            card.hide()
+
+        def _set_auto():
+            self._pyautogui_mode = PyAutoGUIExecutor.AUTO
+            self._pyautogui_executor.mode = PyAutoGUIExecutor.AUTO
+            auto_btn.setText("✅ Auto ON")
+            auto_btn.setStyleSheet(
+                "QPushButton { background: #047857; color: #6ee7b7; border: none; "
+                "border-radius: 6px; padding: 6px 12px; font-size: 11px; }"
+            )
+            _run()
+
+        run_btn.clicked.connect(_run)
+        skip_btn.clicked.connect(_skip)
+        auto_btn.clicked.connect(_set_auto)
+
+        self.history_popup.msg_layout.addWidget(card)
+        QTimer.singleShot(50, self.history_popup.scroll_to_bottom)
 
     def _on_api_error(self, err):
         self.history_popup.update_last_message(f"API Error: {err}")
+
+    # ── PyAutoGUI feedback screenshot ──────────────────────────────────────────
+
+    def _send_pyautogui_feedback(self, exec_result: str):
+        """
+        After pyautogui executes, take a screenshot of the current screen
+        and send it to Qwen as feedback so it can see the result and
+        decide on next steps automatically.
+        Called 600ms after execution so the screen has time to settle.
+        """
+        if not self.oauth or not self.oauth.is_authenticated() or not self.api_client:
+            return
+        # Don't stack if a worker is already running
+        if hasattr(self, 'worker') and self.worker and self.worker.isRunning():
+            return
+        try:
+            import pyautogui, io, base64
+            sw, sh = pyautogui.size()
+            mx, my = pyautogui.position()
+            img = pyautogui.screenshot()
+            buf = io.BytesIO()
+            img.save(buf, format="PNG", optimize=True)
+            b64 = base64.b64encode(buf.getvalue()).decode()
+        except Exception as e:
+            logger.warning(f"PyAutoGUI feedback screenshot failed: {e}")
+            return
+
+        feedback_text = (
+            f"[PYAUTOGUI-FEEDBACK] Execution complete.\n"
+            f"Result: {exec_result}\n"
+            f"Current screen: {sw}x{sh} | Mouse now at: ({mx},{my})\n"
+            "Analyze the screenshot to see the result. "
+            "If the task is complete, say so. If more actions are needed, provide them."
+        )
+
+        payload = [
+            {"type": "text", "text": feedback_text},
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+        ]
+
+        # Show compact feedback marker in chat
+        self.history_popup.add_message(
+            f"📸 Feedback: {sw}×{sh} | 🖱 ({mx},{my})", "user"
+        )
+        self.history_popup.add_message("...", "ai")
+
+        # Save to session
+        self.last_msg_uuid = self.session_service.save_message(
+            self.session_id, "user", feedback_text,
+            attachments=[{"type": "image", "base64": b64, "mime": "image/png", "name": "feedback.png"}],
+            parent_uuid=self.last_msg_uuid,
+        )
+
+        self.worker = APIServerWorker(
+            self.api_client, payload, self._chat_history, vision_mode=True
+        )
+        self.worker.chunk_received.connect(self._on_api_chunk)
+        self.worker.finished_response.connect(self._on_api_finished)
+        self.worker.error_occurred.connect(self._on_api_error)
+        self.worker.start()
+
+        self._chat_history.append({"role": "user", "content": payload})
+        logger.info(f"PyAutoGUI feedback sent: {sw}x{sh} @ ({mx},{my})")
