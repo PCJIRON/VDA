@@ -89,15 +89,22 @@ class OpenCVDetector:
         # Convert to HSV
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         
-        # Define color ranges
+        # Define color ranges (HSV format: [Hue, Saturation, Value])
+        # Note: Red wraps around 180°, so it needs two ranges
         color_ranges = {
-            'red': ([0, 70, 50], [10, 255, 255]),
+            'red': ([0, 70, 50], [10, 255, 255]),  # Lower red range
             'green': ([40, 70, 50], [80, 255, 255]),
             'blue': ([100, 70, 50], [130, 255, 255]),
             'yellow': ([20, 70, 50], [35, 255, 255]),
             'orange': ([10, 70, 50], [25, 255, 255]),
             'purple': ([130, 70, 50], [160, 255, 255]),
             'cyan': ([80, 70, 50], [100, 255, 255]),
+            'pink': ([140, 50, 50], [170, 255, 255]),
+            'magenta': ([140, 70, 50], [160, 255, 255]),
+            'lime': ([35, 70, 50], [45, 255, 255]),
+            'violet': ([130, 50, 50], [140, 255, 255]),
+            'gold': ([25, 50, 50], [35, 255, 255]),
+            'silver': ([0, 0, 200], [180, 20, 255]),  # Gray-ish
         }
         
         if color_name.lower() not in color_ranges:
@@ -109,6 +116,13 @@ class OpenCVDetector:
         
         # Create mask
         mask = cv2.inRange(hsv, lower, upper)
+        
+        # Red wraps around 180°, so create second mask for upper range
+        if color_name.lower() == 'red':
+            lower_red2 = np.array([170, 70, 50], dtype=np.uint8)
+            upper_red2 = np.array([180, 255, 255], dtype=np.uint8)
+            mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+            mask = cv2.bitwise_or(mask, mask2)
         
         # Find contours
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)

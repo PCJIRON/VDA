@@ -802,10 +802,18 @@ class FloatingAssistant(QWidget):
             return
 
         # Skip if a vision API worker is already running (don't stack requests)
+        # Use atomic check-and-set to prevent race condition
+        if hasattr(self, '_worker_creating') and self._worker_creating:
+            logger.debug("Vision: worker creation in progress, skipping")
+            return
+        
         if hasattr(self, 'worker') and self.worker and self.worker.isRunning():
             logger.debug("Vision: skipping capture, previous worker still running")
             return
-
+        
+        # Set flag to prevent concurrent worker creation
+        self._worker_creating = True
+        
         sw = meta["screen_width"]
         sh = meta["screen_height"]
         mx = meta["mouse_x"]
@@ -855,6 +863,9 @@ class FloatingAssistant(QWidget):
         self.worker.finished_response.connect(self._on_api_finished)
         self.worker.error_occurred.connect(self._on_api_error)
         self.worker.start()
+        
+        # Clear creation flag after worker starts
+        self._worker_creating = False
 
         self._chat_history.append({"role": "user", "content": payload})
         
@@ -1038,7 +1049,7 @@ class FloatingAssistant(QWidget):
         self._chat_history.append({"role": "assistant", "content": full_text})
 
         # ── NEW: Parse and execute vision actions (JSON format) ──────────────
-        parsed = self.pyautogui_executor.parse_response(full_text)
+        parsed = self._pyautogui_executor.parse_response(full_text)
         
         if parsed and "target" in parsed:
             # Extract action details from JSON
@@ -1100,7 +1111,7 @@ class FloatingAssistant(QWidget):
             return
         
         # Execute directly
-        success = self.pyautogui_executor.execute(action, target, confidence)
+        success = self._pyautogui_executor.execute(action, target, confidence)
         
         if success:
             self.history_popup.add_message("✅ Action completed!", "ai")
