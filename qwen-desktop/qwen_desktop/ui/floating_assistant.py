@@ -423,9 +423,11 @@ class FloatingAssistant(QWidget):
         self.messages_count = 0
         self.staged_files = []
 
-        # Vision capture service
-        self._vision_service = VisionCaptureService(self)
-        self._vision_service.screenshot_ready.connect(self._on_vision_screenshot)
+        # Vision capture service - DISABLED auto-trigger
+        # Only capture when user explicitly sends input with vision enabled
+        # self._vision_service = VisionCaptureService(self)
+        # self._vision_service.screenshot_ready.connect(self._on_vision_screenshot)
+        self._vision_service = None  # Disabled - manual trigger only
 
         # PyAutoGUI executor
         self._pyautogui_executor = PyAutoGUIExecutor(mode=self._pyautogui_mode)
@@ -733,23 +735,18 @@ class FloatingAssistant(QWidget):
             self.history_popup.add_message("Login successful! ✨", "ai")
             
     def toggle_vision(self):
-        """Start/stop the vision capture service and update UI indicators."""
+        """Toggle vision mode on/off."""
         self.is_vision_enabled = not self.is_vision_enabled
         self.vision_btn.is_green = self.is_vision_enabled
-
+        
         if self.is_vision_enabled:
-            # Delay listener start by 1.0s so the click that toggled vision
-            # doesn't immediately trigger a screenshot capture.
-            self._vision_start_ignore_until = __import__('time').time() + 1.0
-            QTimer.singleShot(1000, self._delayed_vision_start)
-            self.input_field.setPlaceholderText("👁 Vision active — interact to capture...")
+            self.input_field.setPlaceholderText("👁 Vision ON - Type your request then press Enter...")
             self.history_popup.add_message(
-                "👁 Vision mode ON\nAny mouse click or key press will send a screenshot to Qwen.",
+                "👁 Vision mode ON\nType your request (e.g., 'click the submit button') then press Enter.",
                 "ai",
             )
             self._update_vision_status_bar()
         else:
-            self._vision_service.stop()
             self.input_field.setPlaceholderText("Ask Qwen AI...")
             self.history_popup.add_message("👁 Vision mode OFF", "ai")
             self._update_vision_status_bar()
