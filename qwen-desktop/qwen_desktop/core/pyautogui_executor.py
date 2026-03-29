@@ -169,3 +169,31 @@ class PyAutoGUIExecutor:
         except Exception as e:
             logger.error(f"Drag execution failed: {e}")
             return False
+    
+    def has_commands(self, text: str) -> bool:
+        """Check if text contains PyAutoGUI commands.
+        
+        Args:
+            text: Response text to check.
+        
+        Returns:
+            True if PyAutoGUI commands found.
+        """
+        return bool(re.search(r'\[PYAUTOGUI\]', text, re.IGNORECASE))
+    
+    def extract_commands(self, text: str) -> List[str]:
+        """Extract PyAutoGUI commands from text.
+        
+        Args:
+            text: Response text containing commands.
+        
+        Returns:
+            List of command strings.
+        """
+        match = re.search(r'\[PYAUTOGUI\](.*?)\[/PYAUTOGUI\]', text, re.DOTALL | re.IGNORECASE)
+        if match:
+            commands_text = match.group(1)
+            # Split by newlines and filter empty lines
+            commands = [line.strip() for line in commands_text.split('\n') if line.strip() and not line.strip().startswith('#')]
+            return commands
+        return []
