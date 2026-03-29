@@ -29,13 +29,19 @@ class PyAutoGUIExecutor:
     AUTO_TRUSTED = "auto_trusted"
     FULL_AUTO = "full_auto"
     
-    def __init__(self, safety_margin: int = 10):
+    def __init__(
+        self,
+        safety_margin: int = 10,
+        mode: str = "ask_first",
+    ):
         """Initialize executor.
         
         Args:
             safety_margin: Pixels to keep within screen bounds.
+            mode: Execution mode (ask_first, auto_trusted, full_auto).
         """
         self.safety_margin = safety_margin
+        self.mode = mode
         self.screen_w, self.screen_h = pyautogui.size()
     
     def parse_response(self, text: str) -> Optional[Dict[str, Any]]:
