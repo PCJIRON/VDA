@@ -2,12 +2,18 @@
 PyAutoGUI Executor with JSON Response Parsing.
 
 Parses Qwen's JSON output and executes mouse actions.
+Supports template matching for 100% accurate coordinate execution.
 """
 
 import json
 import re
 import logging
+import os
 from typing import Optional, Dict, Any, List, Tuple
+from pathlib import Path
+
+import cv2
+import numpy as np
 import pyautogui
 
 logger = logging.getLogger(__name__)
@@ -172,21 +178,21 @@ class PyAutoGUIExecutor:
     
     def has_commands(self, text: str) -> bool:
         """Check if text contains PyAutoGUI commands.
-        
+
         Args:
             text: Response text to check.
-        
+
         Returns:
             True if PyAutoGUI commands found.
         """
         return bool(re.search(r'\[PYAUTOGUI\]', text, re.IGNORECASE))
-    
+
     def extract_commands(self, text: str) -> List[str]:
         """Extract PyAutoGUI commands from text.
-        
+
         Args:
             text: Response text containing commands.
-        
+
         Returns:
             List of command strings.
         """
@@ -197,3 +203,109 @@ class PyAutoGUIExecutor:
             commands = [line.strip() for line in commands_text.split('\n') if line.strip() and not line.strip().startswith('#')]
             return commands
         return []
+
+    # ── UIED Template Matching ──────────────────────────────────────────────
+
+    def find_with_template(
+        self,
+        template_path: str,
+        threshold: float = 0.7,  # Lowered from 0.9 for better matching
+        screen_resolution: Tuple[int, int] = None
+    ) -> Optional[Tuple[int, int]]:
+        """
+        Find element on screen using template matching.
+
+        This provides 100% accurate coordinates by matching a saved template
+        against the current screen.
+
+        Args:
+            template_path: Path to the template image.
+            threshold: Match confidence threshold (0.0-1.0).
+            screen_resolution: Optional (width, height) for scaling.
+
+        Returns:
+            (center_x, center_y) tuple or None if not found.
+        """
+        logger.info(f"[TemplateMatch] Looking for: {template_path}")
+        
+        if not os.path.exists(template_path):
+            logger.warning(f"[TemplateMatch] Template not found: {template_path}")
+            return None
+
+        try:
+            # Load template
+            template = cv2.imread(template_path, cv2.IMREAD_GRAYSCALE)
+            if template is None:
+                logger.warning(f"[TemplateMatch] Failed to load template: {template_path}")
+                return None
+            
+            logger.info(f"[TemplateMatch] Template size: {template.shape}")
+
+            # Capture current screen
+            screenshot = pyautogui.screenshot()
+            screenshot_np = np.array(screenshot)
+            screenshot_gray = cv2.cvtColor(screenshot_np, cv2.COLOR_RGB2GRAY)
+            
+            logger.info(f"[TemplateMatch] Screen size: {screenshot_gray.shape}")
+
+            # Template matching
+            result = cv2.matchTemplate(screenshot_gray, template, cv2.TM_CCOEFF_NORMED)
+            locations = np.where(result >= threshold)
+            
+            logger.info(f"[TemplateMatch] Locations found: {len(locations[0])} (threshold: {threshold})")
+
+            if len(locations[0]) > 0:
+                # Get best match
+                best_match_idx = np.argmax(result[locations])
+                top_left_y = locations[0][best_match_idx]
+                top_left_x = locations[1][best_match_idx]
+                
+                max_confidence = float(result[locations][best_match_idx])
+
+                # Calculate center
+                h, w = template.shape
+                center_x = int(top_left_x + w / 2)
+                center_y = int(top_left_y + h / 2)
+
+                logger.info(f"[TemplateMatch] ✅ Match found: ({center_x}, {center_y}) with {max_confidence:.2f} confidence")
+
+                return (center_x, center_y)
+            else:
+                # Log best match even if below threshold
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+                logger.info(f"[TemplateMatch] ❌ No match above threshold. Best: {max_val:.2f} at {max_loc}")
+                logger.debug(f"[TemplateMatch] Locations: {locations}")
+                return None
+
+        except Exception as e:
+            logger.error(f"[TemplateMatch] Error: {e}", exc_info=True)
+            return None
+
+    def execute_on_template(
+        self,
+        template_path: str,
+        action: str = "click",
+        threshold: float = 0.9,
+        **kwargs
+    ) -> Tuple[bool, Optional[Tuple[int, int]]]:
+        """
+        Execute action on element found via template matching.
+
+        Args:
+            template_path: Path to the template image.
+            action: Action to execute (click, double_click, etc.).
+            threshold: Match confidence threshold.
+            **kwargs: Additional action-specific params.
+
+        Returns:
+            (success, coordinates) tuple.
+        """
+        coords = self.find_with_template(template_path, threshold)
+
+        if coords:
+            x, y = coords
+            success = self.execute(action, [x, y], **kwargs)
+            return (success, coords)
+        else:
+            logger.warning(f"Template match failed for action: {action}")
+            return (False, None)

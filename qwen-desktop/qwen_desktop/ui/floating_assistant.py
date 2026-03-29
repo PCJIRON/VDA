@@ -41,6 +41,7 @@ from qwen_desktop.ui.components.vision_button import VisionButton
 from qwen_desktop.ui.components.attach_button import AttachButton
 from qwen_desktop.ui.components.send_button import SendButton
 from qwen_desktop.ui.components.settings_button import SettingsButton
+from qwen_desktop.ui.components.uied_button import UIEDButton, UIEDResultsPanel
 
 logger = logging.getLogger(__name__)
 
@@ -455,6 +456,12 @@ class FloatingAssistant(QWidget):
         # UI Automation provides 100% accurate coordinates from OS
         self._use_ui_automation = UI_AUTOMATION_AVAILABLE
 
+        # ── NEW: UIED Service for UI Element Detection ──
+        # Captures screenshots, detects components, labels with LLM
+        self._uied_service = None
+        self._uied_results_panel = None
+        self._is_uied_detecting = False
+
         # Hook up sessions logic
         self.load_session_clicked = lambda u: self._switch_to_session(u)
         self.history_popup.populate_sessions(
@@ -571,11 +578,16 @@ class FloatingAssistant(QWidget):
         self.settings_btn = SettingsButton()
         self.settings_btn.clicked.connect(self.toggle_auth)
 
-        # Layout: [settings] [input] [send/stop] [vision] [attach]
+        # ── NEW: UIED Button for UI Element Detection ──
+        self.uied_btn = UIEDButton()
+        self.uied_btn.clicked.connect(self.trigger_uied_detection)
+
+        # Layout: [settings] [input] [send/stop] [vision] [uied] [attach]
         self.input_layout.addWidget(self.settings_btn)
         self.input_layout.addWidget(self.input_field, 1)
         self.input_layout.addWidget(self.send_btn)   # right next to input
         self.input_layout.addWidget(self.vision_btn)
+        self.input_layout.addWidget(self.uied_btn)
         self.input_layout.addWidget(self.attach_btn)
         
         self.input_wrapper.setFixedWidth(self.expanded_size - self.collapsed_size)
@@ -1168,57 +1180,182 @@ Be PRECISE - center of element. Example:
         )
         self._chat_history.append({"role": "assistant", "content": full_text})
 
-        # ── NEW: Parse and execute vision actions (JSON format) ──────────────
-        parsed = self._pyautogui_executor.parse_response(full_text)
-
-        if parsed and ("target" in parsed or "target_normalized" in parsed):
-            # Extract action details from JSON
-            action = parsed.get("action", "click")
-            
-            # Support BOTH normalized and pixel coordinates
-            if "target_normalized" in parsed:
-                target = parsed["target_normalized"]  # [0.0-1.0, 0.0-1.0]
-                logger.info(f"Parsed NORMALIZED target: {target}")
-            else:
-                target = parsed["target"]  # [x, y] in pixels
-                logger.info(f"Parsed PIXEL target: {target}")
-            
-            confidence = parsed.get("confidence", 1.0)
-            description = parsed.get("description", "")
-            
-            # Extract target name from description (for caching)
-            # E.g., "Found Chrome icon..." → target_name = "Chrome_icon"
-            target_name = None
-            if description:
-                # Better extraction: capture full element name
-                match = re.search(r'Found ([A-Za-z0-9\s\-_]+?)(?:\s+(?:icon|button|logo|text|element|in|at|on))', description, re.IGNORECASE)
-                if match:
-                    # Clean up: replace spaces with underscores for consistent key
-                    target_name = match.group(1).strip().replace(' ', '_')
-                    logger.debug(f"Extracted target name: '{target_name}'")
-                else:
-                    # Fallback: use first 3 words
-                    words = description.split()[:3]
-                    target_name = '_'.join(words).replace('"', '').replace("'", '')[:30]
-                    logger.debug(f"Fallback target name: '{target_name}'")
-
-            # Show what we're doing
-            self.history_popup.add_message(
-                f"🎯 {description}\nExecuting: {action} at {target}",
-                "ai",
-            )
-
-            # Execute after short delay (user can see what's happening)
-            QTimer.singleShot(
-                500,
-                lambda: self._execute_vision_action(action, target, confidence, target_name),
-            )
+        # NOTE: Qwen Vision can now trigger UIED execution
+        # When LLM returns JSON with action + target_name, use UIED template matching
         
-        # ── PyAutoGUI command detection (existing fallback) ─────────────────
-        if self._pyautogui_executor.has_commands(full_text):
-            commands = self._pyautogui_executor.extract_commands(full_text)
-            if commands:
-                self._handle_pyautogui_commands(commands)
+        # Check if Qwen returned JSON with action and target_name
+        if '"action"' in full_text and ('"target_name"' in full_text or '"description"' in full_text):
+            logger.info("Qwen returned action with target - triggering UIED execution")
+            QTimer.singleShot(500, lambda: self._execute_uied_from_llm(full_text))
+    
+    def _execute_uied_from_llm(self, llm_response: str):
+        """
+        Execute action based on LLM's response using UIED template matching.
+        
+        LLM returns JSON like:
+        {
+            "action": "click",
+            "target_name": "Chrome icon",
+            "description": "Found Chrome icon in taskbar"
+        }
+        OR (old format):
+        {
+            "action": "click",
+            "target_normalized": [0.72, 0.95],
+            "description": "Found Chrome icon in taskbar"
+        }
+        
+        This method:
+        1. Extracts target from description (if target_name missing)
+        2. Finds matching UIED template
+        3. Executes via template matching
+        """
+        import json
+        import re
+        
+        # Try to extract JSON from response
+        # Pattern 1: ```json { ... } ```
+        json_match = re.search(r'```json\s*({.*?})\s*```', llm_response, re.DOTALL)
+        if not json_match:
+            # Pattern 2: Just { ... } with action
+            json_match = re.search(r'({.*?"action".*?})', llm_response, re.DOTALL)
+        
+        if not json_match:
+            logger.warning(f"No JSON found in LLM response: {llm_response[:200]}")
+            return
+        
+        try:
+            action_data = json.loads(json_match.group(1))
+            action = action_data.get('action', 'click')
+            target_name = action_data.get('target_name', '')
+            description = action_data.get('description', '')
+            
+            logger.info(f"UIED-LLM: Parsed JSON: {action_data}")
+            logger.info(f"UIED-LLM: Action={action}, Target={target_name}, Desc={description}")
+            
+            # If target_name is missing, extract from description
+            if not target_name and description:
+                # Extract target from description
+                # E.g., "Found Chrome icon in taskbar" → "Chrome icon"
+                match = re.search(r'Found ([A-Za-z0-9\s\-_]+?)(?:\s+(?:icon|button|logo|text|element|in|at|on|the|a))', description, re.IGNORECASE)
+                if match:
+                    target_name = match.group(1).strip()
+                    logger.info(f"UIED-LLM: Extracted target from description: '{target_name}'")
+                else:
+                    # Fallback: use first few words
+                    words = description.split()[:3]
+                    target_name = ' '.join(words).replace('"', '').replace("'", '')[:30]
+                    logger.info(f"UIED-LLM: Fallback target: '{target_name}'")
+            
+            if not target_name:
+                logger.warning("UIED-LLM: No target_name in response")
+                self.history_popup.add_message(
+                    "⚠️ LLM didn't identify a specific target. Please be more specific.",
+                    "ai"
+                )
+                return
+            
+            # Show that we're processing
+            self.history_popup.add_message(
+                f"🔍 Finding '{target_name}' on screen...",
+                "ai"
+            )
+            
+            # Search for matching template in UIED templates
+            template_path = self._find_uied_template_for_target(target_name)
+            
+            if not template_path:
+                logger.warning(f"UIED-LLM: No template found for '{target_name}'")
+                self.history_popup.add_message(
+                    f"⚠️ '{target_name}' not found in detected components.\n"
+                    f"Click UIED button (⊞) to scan screen first.",
+                    "ai"
+                )
+                return
+            
+            # Execute via template matching
+            logger.info(f"UIED-LLM: Found template: {template_path}")
+            coords = self._pyautogui_executor.find_with_template(template_path, threshold=0.7)
+            
+            if coords:
+                cx, cy = coords
+                logger.info(f"UIED-LLM: Match found at ({cx}, {cy})")
+                self.history_popup.add_message(
+                    f"✅ Found '{target_name}' at ({cx}, {cy})\nExecuting: {action}",
+                    "ai"
+                )
+                
+                # Execute the action
+                self._execute_uied_action(action, cx, cy, {'label': target_name})
+            else:
+                self.history_popup.add_message(
+                    f"❌ Could not locate '{target_name}' on current screen.\n"
+                    f"The screen may have changed.",
+                    "ai"
+                )
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"UIED-LLM: Failed to parse JSON: {e}")
+            logger.error(f"UIED-LLM: Raw response: {llm_response[:500]}")
+            self.history_popup.add_message("⚠️ Failed to parse LLM response", "ai")
+        except Exception as e:
+            logger.error(f"UIED-LLM: Error: {e}", exc_info=True)
+            self.history_popup.add_message(f"❌ Error: {e}", "ai")
+    
+    def _find_uied_template_for_target(self, target_name: str) -> Optional[str]:
+        """
+        Find a UIED template that matches the target name.
+        
+        Searches through existing templates and finds one whose label
+        matches or contains the target_name.
+        """
+        import os
+        import fnmatch
+        
+        template_dir = os.path.join(
+            os.path.expanduser("~"),
+            ".qwen_desktop",
+            "uied_templates"
+        )
+        
+        if not os.path.exists(template_dir):
+            logger.warning(f"UIED-LLM: Template directory not found: {template_dir}")
+            return None
+        
+        # Normalize target name for matching
+        target_lower = target_name.lower().replace('_', ' ').strip()
+        
+        # Get all template files
+        template_files = [f for f in os.listdir(template_dir) if f.endswith('.png')]
+        
+        logger.info(f"UIED-LLM: Searching {len(template_files)} templates for '{target_name}'")
+        
+        # Try exact match first
+        for template_file in template_files:
+            # Extract label from filename (format: comp_XXX_Label.png)
+            label_part = template_file.replace('.png', '')
+            label_lower = label_part.lower().replace('_', ' ')
+            
+            # Check if target is in label or label is in target
+            if target_lower in label_lower or label_lower in target_lower:
+                template_path = os.path.join(template_dir, template_file)
+                logger.info(f"UIED-LLM: Found match: {template_file}")
+                return template_path
+        
+        # Try fuzzy match (check individual words)
+        target_words = target_lower.split()
+        for template_file in template_files:
+            label_part = template_file.replace('.png', '').lower().replace('_', ' ')
+            
+            # Count matching words
+            matches = sum(1 for word in target_words if word in label_part and len(word) > 3)
+            if matches >= 1:  # At least one significant word matches
+                template_path = os.path.join(template_dir, template_file)
+                logger.info(f"UIED-LLM: Found fuzzy match: {template_file} ({matches} words)")
+                return template_path
+        
+        logger.warning(f"UIED-LLM: No matching template found for '{target_name}'")
+        return None
     
     def _execute_vision_action(
         self,
@@ -1565,178 +1702,290 @@ Be PRECISE - center of element. Example:
         self._set_send_mode()
         self.history_popup.update_last_message("⏹ Stopped")
 
-    def _handle_pyautogui_commands(self, commands: list):
-        """Always auto-execute pyautogui commands, then send feedback screenshot."""
-        ok, result = self._pyautogui_executor.execute(
-            commands, self._last_vision_w, self._last_vision_h
-        )
-        self.history_popup.add_message(f"🤖 Executed:\n{result}", "ai")
-        # Send feedback screenshot after screen settles
-        QTimer.singleShot(600, lambda: self._send_pyautogui_feedback(result))
+    # NOTE: _handle_pyautogui_commands and _show_pyautogui_preview_card removed
+    # PyAutoGUI execution now ONLY happens through UIED button (⊞)
+    # _send_pyautogui_feedback also removed - feedback now part of UIED flow
 
-    # ── Ask-first preview card removed ── always auto now ────────────────────
+    # ═══════════════════════════════════════════════════════════════════════
+    # UIED: UI Element Detection & Execution
+    # ═══════════════════════════════════════════════════════════════════════
 
-    def _show_pyautogui_preview_card(self, commands: list, preview: str):
-        """Insert a confirm card in the chat popup for pyautogui commands."""
-        card = QFrame()
-        card.setStyleSheet("""
-            QFrame {
-                background: #1e1e2e;
-                border: 1px solid #6366f1;
-                border-radius: 10px;
-                margin: 4px 16px;
-            }
-        """)
-        c_layout = QVBoxLayout(card)
-        c_layout.setContentsMargins(12, 10, 12, 10)
-        c_layout.setSpacing(6)
-
-        title = QLabel("🤖 PyAutoGUI Commands Detected")
-        title.setStyleSheet("color: #a5b4fc; font-weight: bold; font-size: 12px; background: transparent;")
-        c_layout.addWidget(title)
-
-        code_lbl = QTextEdit()
-        code_lbl.setReadOnly(True)
-        code_lbl.setPlainText(preview)
-        code_lbl.setStyleSheet(
-            "background: #12121f; color: #e2e8f0; font-family: 'Consolas', monospace; "
-            "font-size: 11px; border: none; border-radius: 6px;"
-        )
-        code_lbl.setFixedHeight(min(120, 24 * len(commands) + 30))
-        c_layout.addWidget(code_lbl)
-
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
-
-        run_btn = QPushButton("▶  Run")
-        run_btn.setStyleSheet("""
-            QPushButton {
-                background: #6366f1; color: white; border: none;
-                border-radius: 6px; padding: 6px 18px; font-weight: bold;
-            }
-            QPushButton:hover { background: #4f46e5; }
-        """)
-        run_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-
-        skip_btn = QPushButton("✕  Skip")
-        skip_btn.setStyleSheet("""
-            QPushButton {
-                background: #374151; color: #9ca3af; border: none;
-                border-radius: 6px; padding: 6px 14px;
-            }
-            QPushButton:hover { background: #4b5563; color: white; }
-        """)
-        skip_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-
-        auto_btn = QPushButton("⚡ Set Auto")
-        auto_btn.setStyleSheet("""
-            QPushButton {
-                background: #065f46; color: #6ee7b7; border: none;
-                border-radius: 6px; padding: 6px 12px; font-size: 11px;
-            }
-            QPushButton:hover { background: #047857; }
-        """)
-        auto_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-
-        btn_row.addWidget(run_btn)
-        btn_row.addWidget(skip_btn)
-        btn_row.addStretch()
-        btn_row.addWidget(auto_btn)
-        c_layout.addLayout(btn_row)
-
-        def _run():
-            ok, result = self._pyautogui_executor.execute(
-                commands, self._last_vision_w, self._last_vision_h
-            )
-            code_lbl.setPlainText(result)
-            run_btn.setEnabled(False)
-            run_btn.setText("✅ Done")
-            skip_btn.setEnabled(False)
-            # ── Feature 2: send feedback screenshot after execution ──────────────
-            QTimer.singleShot(600, lambda: self._send_pyautogui_feedback(result))
-
-        def _skip():
-            card.hide()
-
-        def _set_auto():
-            self._pyautogui_mode = PyAutoGUIExecutor.AUTO
-            self._pyautogui_executor.mode = PyAutoGUIExecutor.AUTO
-            auto_btn.setText("✅ Auto ON")
-            auto_btn.setStyleSheet(
-                "QPushButton { background: #047857; color: #6ee7b7; border: none; "
-                "border-radius: 6px; padding: 6px 12px; font-size: 11px; }"
-            )
-            _run()
-
-        run_btn.clicked.connect(_run)
-        skip_btn.clicked.connect(_skip)
-        auto_btn.clicked.connect(_set_auto)
-
-        self.history_popup.msg_layout.addWidget(card)
-        QTimer.singleShot(50, self.history_popup.scroll_to_bottom)
-
-    def _on_api_error(self, err):
-        self.history_popup.update_last_message(f"API Error: {err}")
-
-    # ── PyAutoGUI feedback screenshot ──────────────────────────────────────────
-
-    def _send_pyautogui_feedback(self, exec_result: str):
+    def trigger_uied_detection(self):
         """
-        After pyautogui executes, take a screenshot of the current screen
-        and send it to Qwen as feedback so it can see the result and
-        decide on next steps automatically.
-        Called 600ms after execution so the screen has time to settle.
+        Trigger UI Element Detection.
+        
+        Captures screenshot, detects UI components using OpenCV,
+        and labels them using Qwen Vision LLM.
         """
-        if not self.oauth or not self.oauth.is_authenticated() or not self.api_client:
+        if self._is_uied_detecting:
+            logger.info("UIED detection already in progress")
             return
-        # Don't stack if a worker is already running
-        if hasattr(self, 'worker') and self.worker and self.worker.isRunning():
+        
+        if not self.api_client:
+            self._show_uied_error("Please login first")
             return
-        try:
-            import pyautogui, io, base64
-            sw, sh = pyautogui.size()
-            mx, my = pyautogui.position()
-            img = pyautogui.screenshot()
-            buf = io.BytesIO()
-            img.save(buf, format="PNG", optimize=True)
-            b64 = base64.b64encode(buf.getvalue()).decode()
-        except Exception as e:
-            logger.warning(f"PyAutoGUI feedback screenshot failed: {e}")
-            return
-
-        feedback_text = (
-            f"[PYAUTOGUI-FEEDBACK] Execution complete.\n"
-            f"Result: {exec_result}\n"
-            f"Current screen: {sw}x{sh} | Mouse now at: ({mx},{my})\n"
-            "Analyze the screenshot to see the result. "
-            "If the task is complete, say so. If more actions are needed, provide them."
+        
+        # Initialize UIED service
+        from qwen_desktop.core.uied_service import UIEDService
+        import os
+        
+        template_dir = os.path.join(
+            os.path.expanduser("~"),
+            ".qwen_desktop",
+            "uied_templates"
         )
-
-        payload = [
-            {"type": "text", "text": feedback_text},
-            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
-        ]
-
-        # Show compact feedback marker in chat
+        
+        self._uied_service = UIEDService(
+            api_client=self.api_client,
+            template_dir=template_dir
+        )
+        
+        # Connect signals
+        self._uied_service.detection_started.connect(self._on_uied_started)
+        self._uied_service.detection_complete.connect(self._on_uied_complete)
+        self._uied_service.detection_error.connect(self._on_uied_error)
+        self._uied_service.progress_update.connect(self._on_uied_progress)
+        
+        # Start detection
+        self._is_uied_detecting = True
+        self.uied_btn.set_detecting(True)
+        
+        success = self._uied_service.capture_and_detect()
+        
+        if not success:
+            self._on_uied_error("Failed to start detection")
+    
+    def _on_uied_started(self):
+        """Handle UIED detection started."""
+        logger.info("UIED detection started")
+        self.uied_btn.set_detecting(True)
+        self.uied_btn.set_has_results(False, 0)
+        
+        # Show progress in chat
+        self.history_popup.add_message("🔍 Scanning screen for UI elements...", "ai")
+    
+    def _on_uied_progress(self, message: str):
+        """Handle UIED progress update."""
+        logger.debug(f"UIED progress: {message}")
+        # Update last message with progress
+        if self.history_popup.msg_layout.count() > 0:
+            last_item = self.history_popup.msg_layout.itemAt(
+                self.history_popup.msg_layout.count() - 1
+            )
+            if last_item and last_item.widget():
+                # Could update a progress indicator here
+                pass
+    
+    def _on_uied_complete(self, components: list):
+        """Handle UIED detection complete."""
+        self._is_uied_detecting = False
+        self.uied_btn.set_detecting(False)
+        self.uied_btn.set_has_results(True, len(components))
+        
+        logger.info(f"UIED detection complete: {len(components)} components")
+        
+        # Update chat message
+        while self.history_popup.msg_layout.count():
+            item = self.history_popup.msg_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
         self.history_popup.add_message(
-            f"📸 Feedback: {sw}×{sh} | 🖱 ({mx},{my})", "user"
+            f"✅ Found {len(components)} UI elements! Click the button to view.",
+            "ai"
         )
-        self.history_popup.add_message("...", "ai")
-
-        # Save to session
-        self.last_msg_uuid = self.session_service.save_message(
-            self.session_id, "user", feedback_text,
-            attachments=[{"type": "image", "base64": b64, "mime": "image/png", "name": "feedback.png"}],
-            parent_uuid=self.last_msg_uuid,
+        
+        # Store components
+        self._uied_components = components
+        
+        # Show results panel
+        self._show_uied_results_panel(components)
+    
+    def _on_uied_error(self, error: str):
+        """Handle UIED detection error."""
+        self._is_uied_detecting = False
+        self.uied_btn.set_detecting(False)
+        
+        logger.error(f"UIED detection error: {error}")
+        self._show_uied_error(error)
+    
+    def _show_uied_error(self, error: str):
+        """Show UIED error message."""
+        self.history_popup.add_message(f"❌ UIED Error: {error}", "ai")
+    
+    def _show_uied_results_panel(self, components: list):
+        """Show the UIED results panel."""
+        if self._uied_results_panel is None:
+            self._uied_results_panel = UIEDResultsPanel(self)
+            self._uied_results_panel.component_selected.connect(self._on_uied_component_selected)
+        
+        self._uied_results_panel.set_components(components)
+        self._uied_results_panel.show_at_cursor()
+    
+    def _on_uied_component_selected(self, component: dict):
+        """Handle component selection from results panel."""
+        logger.info(f"Component selected: {component.get('label')}")
+        
+        # Add to chat
+        self.history_popup.add_message(
+            f"🎯 Selected: **{component.get('label')}** "
+            f"({component.get('component_type')}) at ({component.get('x')}, {component.get('y')})",
+            "user"
         )
-
-        self.worker = APIServerWorker(
-            self.api_client, payload, self._chat_history, vision_mode=True
+        
+        # Store as last selected target for automation
+        self._last_uied_component = component
+        
+        # Auto-send to LLM for action
+        self._handle_uied_component_action(component)
+    
+    def _handle_uied_component_action(self, component: dict):
+        """
+        Handle action for selected UI component.
+        
+        Uses template matching for 100% accurate coordinates.
+        """
+        component_id = component.get('id')
+        label = component.get('label', 'Unknown')
+        template_path = component.get('template_path')
+        
+        logger.info(f"UIED: Handling action for '{label}' (id={component_id})")
+        logger.info(f"UIED: Template path: {template_path}")
+        logger.info(f"UIED: Component data: x={component.get('x')}, y={component.get('y')}, w={component.get('width')}, h={component.get('height')}")
+        
+        if not template_path:
+            logger.warning(f"UIED: No template path for '{label}'")
+            self.history_popup.add_message(
+                f"⚠️ No template saved for {label}",
+                "ai"
+            )
+            return
+        
+        # Check if template file exists
+        import os
+        if not os.path.exists(template_path):
+            logger.error(f"UIED: Template file not found: {template_path}")
+            self.history_popup.add_message(
+                f"⚠️ Template file not found for {label}\nThe UI may have changed. Re-run detection.",
+                "ai"
+            )
+            return
+        
+        # Get current coordinates via template matching
+        # First try direct template matching with PyAutoGUI executor
+        if self._pyautogui_executor:
+            logger.info(f"UIED: Attempting template matching with threshold=0.7")
+            coords = self._pyautogui_executor.find_with_template(template_path, threshold=0.7)
+            
+            if coords:
+                cx, cy = coords
+                logger.info(f"UIED: ✅ Template match found at ({cx}, {cy})")
+                self.history_popup.add_message(
+                    f"✅ Template match found at ({cx}, {cy}) - 100% accurate!",
+                    "ai"
+                )
+                
+                # Ask user what to do
+                self._ask_uied_action(label, cx, cy, component)
+                return
+            else:
+                logger.warning(f"UIED: ❌ Template match failed for '{label}'")
+        
+        # Fallback: Use stored coordinates from component
+        cx = component.get('center_x') or (component.get('x', 0) + component.get('width', 0) // 2)
+        cy = component.get('center_y') or (component.get('y', 0) + component.get('height', 0) // 2)
+        
+        logger.info(f"UIED: Using stored coordinates: ({cx}, {cy})")
+        self.history_popup.add_message(
+            f"📍 Using stored coordinates: ({cx}, {cy})\n⚠️ Template match failed - UI may have changed",
+            "ai"
         )
-        self.worker.chunk_received.connect(self._on_api_chunk)
-        self.worker.finished_response.connect(self._on_api_finished)
-        self.worker.error_occurred.connect(self._on_api_error)
-        self.worker.start()
-
-        self._chat_history.append({"role": "user", "content": payload})
-        logger.info(f"PyAutoGUI feedback sent: {sw}x{sh} @ ({mx},{my})")
+        self._ask_uied_action(label, cx, cy, component)
+    
+    def _ask_uied_action(self, label: str, x: int, y: int, component: dict):
+        """Ask user what action to perform on the component."""
+        actions_menu = QMenu(self)
+        actions_menu.setStyleSheet("""
+            QMenu {
+                background-color: #1f2937;
+                color: white;
+                border-radius: 8px;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 8px 20px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #6366f1;
+            }
+        """)
+        
+        click_act = QAction(f"🖱️ Click '{label}'", self)
+        click_act.triggered.connect(lambda: self._execute_uied_action('click', x, y, component))
+        
+        double_act = QAction(f"🖱️🖱️ Double-click '{label}'", self)
+        double_act.triggered.connect(lambda: self._execute_uied_action('double_click', x, y, component))
+        
+        type_act = QAction(f"⌨️ Type into '{label}'", self)
+        type_act.triggered.connect(lambda: self._execute_uied_action('type', x, y, component))
+        
+        actions_menu.addAction(click_act)
+        actions_menu.addAction(double_act)
+        actions_menu.addAction(type_act)
+        
+        # Show at cursor
+        actions_menu.exec(self.mapToGlobal(self.uied_btn.pos()))
+    
+    def _execute_uied_action(self, action: str, x: int, y: int, component: dict):
+        """Execute action on UI component using PyAutoGUI."""
+        label = component.get('label', 'Unknown')
+        
+        logger.info(f"UIED: Executing '{action}' at ({x}, {y}) for '{label}'")
+        
+        try:
+            import pyautogui
+            
+            # Get screen size for bounds checking
+            screen_w, screen_h = pyautogui.size()
+            
+            # Validate coordinates are within screen bounds
+            if x < 0 or x >= screen_w or y < 0 or y >= screen_h:
+                error_msg = f"Coordinates ({x}, {y}) out of bounds (screen: {screen_w}x{screen_h})"
+                logger.error(f"UIED: {error_msg}")
+                self.history_popup.add_message(f"❌ {error_msg}", "ai")
+                return
+            
+            # Disable pyautogui fail-safe for programmatic control
+            pyautogui.FAILSAFE = False
+            
+            if action == 'click':
+                logger.info(f"UIED: Moving to ({x}, {y}) and clicking")
+                pyautogui.moveTo(x, y, duration=0.3)
+                pyautogui.click()
+                self.history_popup.add_message(f"✅ Clicked '{label}' at ({x}, {y})", "ai")
+            
+            elif action == 'double_click':
+                logger.info(f"UIED: Moving to ({x}, {y}) and double-clicking")
+                pyautogui.moveTo(x, y, duration=0.3)
+                pyautogui.doubleClick()
+                self.history_popup.add_message(f"✅ Double-clicked '{label}' at ({x}, {y})", "ai")
+            
+            elif action == 'type':
+                logger.info(f"UIED: Moving to ({x}, {y}) and clicking for typing")
+                pyautogui.moveTo(x, y, duration=0.3)
+                pyautogui.click()
+                self.history_popup.add_message(
+                    f"✅ Clicked '{label}' - ready for typing.\nType your message in the input field.",
+                    "ai"
+                )
+            
+            # Re-enable fail-safe
+            pyautogui.FAILSAFE = True
+            
+            logger.info(f"UIED: Action '{action}' completed successfully")
+            
+        except Exception as e:
+            error_msg = f"Action '{action}' failed: {str(e)}"
+            logger.error(f"UIED: {error_msg}", exc_info=True)
+            self.history_popup.add_message(f"❌ {error_msg}", "ai")
