@@ -1116,14 +1116,20 @@ Be PRECISE - center of element. Example:
             description = parsed.get("description", "")
             
             # Extract target name from description (for caching)
-            # E.g., "Found Chrome icon..." → target_name = "Chrome icon"
+            # E.g., "Found Chrome icon..." → target_name = "Chrome_icon"
             target_name = None
             if description:
-                # Simple extraction: take first noun phrase
-                match = re.search(r'Found ([A-Za-z0-9\s\-_]+?)(?:icon|button|logo|text|element)', description, re.IGNORECASE)
+                # Better extraction: capture full element name
+                match = re.search(r'Found ([A-Za-z0-9\s\-_]+?)(?:\s+(?:icon|button|logo|text|element|in|at|on))', description, re.IGNORECASE)
                 if match:
-                    target_name = match.group(1).strip()
+                    # Clean up: replace spaces with underscores for consistent key
+                    target_name = match.group(1).strip().replace(' ', '_')
                     logger.debug(f"Extracted target name: '{target_name}'")
+                else:
+                    # Fallback: use first 3 words
+                    words = description.split()[:3]
+                    target_name = '_'.join(words).replace('"', '').replace("'", '')[:30]
+                    logger.debug(f"Fallback target name: '{target_name}'")
 
             # Show what we're doing
             self.history_popup.add_message(
@@ -1163,6 +1169,7 @@ Be PRECISE - center of element. Example:
         # ── PHASE 1: Check Template Cache (OPENCV FAST MATCH) ──
         if target_name and target_name in self._template_cache:
             logger.info(f"[OPENCV] Template found for '{target_name}'. Fast matching...")
+            logger.info(f"[OPENCV] Cache keys: {list(self._template_cache.keys())}")
             
             try:
                 # Take fresh screenshot
@@ -1173,10 +1180,13 @@ Be PRECISE - center of element. Example:
                 
                 # Get cached template
                 template_gray = self._template_cache[target_name]
+                logger.info(f"[OPENCV] Template size: {template_gray.shape}")
                 
                 # Template matching
                 res = cv2.matchTemplate(screen_gray, template_gray, cv2.TM_CCOEFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+                
+                logger.info(f"[OPENCV] Match result: {max_val:.3f} at {max_loc}")
                 
                 if max_val >= self._template_threshold:
                     # Found exact match!
@@ -1236,14 +1246,16 @@ Be PRECISE - center of element. Example:
                 # Extract template from current screenshot for future caching
                 try:
                     import pyautogui
+                    import os
                     fresh_ss = np.array(pyautogui.screenshot())
                     fresh_bgr = cv2.cvtColor(fresh_ss, cv2.COLOR_RGB2BGR)
                     fresh_gray = cv2.cvtColor(fresh_bgr, cv2.COLOR_BGR2GRAY)
                     
-                    # Get bounding box from normalized coords
-                    # Assume bbox is roughly 5% of screen around the point
-                    bbox_w = int(screenshot_w * 0.05)  # ~5% width
-                    bbox_h = int(screenshot_h * 0.05)  # ~5% height
+                    # FIXED: Use fixed 80x80px crop (better than 5%)
+                    # Most icons/buttons are 32-64px, so 80x80 gives good margin
+                    crop_size = 80
+                    bbox_w = crop_size
+                    bbox_h = crop_size
                     
                     x1 = max(0, int(ss_x) - bbox_w // 2)
                     y1 = max(0, int(ss_y) - bbox_h // 2)
@@ -1252,10 +1264,19 @@ Be PRECISE - center of element. Example:
                     
                     # Crop and save as template
                     crop_gray = fresh_gray[y1:y2, x1:x2]
+                    crop_bgr = fresh_bgr[y1:y2, x1:x2]
                     
                     if crop_gray.size > 0 and target_name:
                         self._template_cache[target_name] = crop_gray
+                        
+                        # ALSO SAVE TO DISK (for debugging/visualization)
+                        debug_dir = os.path.join(os.path.expanduser("~"), ".qwen-desktop", "templates")
+                        os.makedirs(debug_dir, exist_ok=True)
+                        template_path = os.path.join(debug_dir, f"{target_name}.png")
+                        cv2.imwrite(template_path, crop_bgr)
+                        
                         logger.info(f"[LEARNED] Saved template for '{target_name}' (Size: {crop_gray.shape})")
+                        logger.info(f"[LEARNED] Template saved to: {template_path}")
                 except Exception as e:
                     logger.debug(f"Template extraction failed: {e}")
 
