@@ -24,6 +24,11 @@ class PyAutoGUIExecutor:
     DRAG_START = "drag_start"
     DRAG_END = "drag_end"
     
+    # Execution modes
+    ASK_FIRST = "ask_first"
+    AUTO_TRUSTED = "auto_trusted"
+    FULL_AUTO = "full_auto"
+    
     def __init__(self, safety_margin: int = 10):
         """Initialize executor.
         
