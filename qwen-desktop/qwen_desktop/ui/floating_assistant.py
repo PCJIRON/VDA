@@ -16,6 +16,7 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import (
     QColor, QPainter, QLinearGradient, QBrush, QCursor, QAction, QFont, QPalette, QPixmap
 )
+from typing import List
 import datetime
 import asyncio
 import logging
