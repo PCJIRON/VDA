@@ -1131,45 +1131,67 @@ Be PRECISE - center of element. Example:
     ):
         """Execute vision-based action with NORMALIZED coordinate support."""
         model_x, model_y = target[0], target[1]
-        
+
         # Check if coordinates are normalized (0.0-1.0) or pixel coordinates
         is_normalized = (0.0 <= model_x <= 1.0) and (0.0 <= model_y <= 1.0)
-        
+
         if is_normalized:
             # ── NORMALIZED → Screen coordinates ──
-            if hasattr(self, '_last_screen_resolution'):
+            # CRITICAL FIX: Use screenshot size, not screen size!
+            if hasattr(self, '_last_screenshot_size') and hasattr(self, '_last_screen_resolution'):
+                screenshot_w, screenshot_h = self._last_screenshot_size
                 screen_w, screen_h = self._last_screen_resolution
                 
-                # Convert normalized to screen pixels
-                real_x = int(model_x * screen_w)
-                real_y = int(model_y * screen_h)
+                # Step 1: Convert normalized to screenshot pixels
+                ss_x = model_x * screenshot_w
+                ss_y = model_y * screenshot_h
                 
-                logger.info(f"Normalized coords: [{model_x:.4f}, {model_y:.4f}] → Screen: [{real_x}, {real_y}] ({screen_w}x{screen_h})")
+                # Step 2: Calculate calibration ratio
+                ratio_x = screen_w / screenshot_w
+                ratio_y = screen_h / screenshot_h
                 
+                # Step 3: Convert screenshot pixels to screen coordinates
+                real_x = int(ss_x * ratio_x)
+                real_y = int(ss_y * ratio_y)
+                
+                logger.info(f"Normalized: [{model_x:.4f}, {model_y:.4f}]")
+                logger.info(f"Screenshot: {screenshot_w}×{screenshot_h}")
+                logger.info(f"Screenshot pixels: ({ss_x:.1f}, {ss_y:.1f})")
+                logger.info(f"Ratio: {ratio_x:.6f} × {ratio_y:.6f}")
+                logger.info(f"Screen: [{real_x}, {real_y}] ({screen_w}×{screen_h})")
+
                 target = [real_x, real_y]
             else:
-                logger.error("No screen resolution stored! Using normalized coords as-is")
+                # Fallback: use screen resolution (less accurate)
+                if hasattr(self, '_last_screen_resolution'):
+                    screen_w, screen_h = self._last_screen_resolution
+                    real_x = int(model_x * screen_w)
+                    real_y = int(model_y * screen_h)
+                    logger.warning(f"No screenshot size! Using screen: [{real_x}, {real_y}]")
+                    target = [real_x, real_y]
+                else:
+                    logger.error("No screen resolution stored! Using normalized coords as-is")
         else:
             # ── Pixel coordinates: Apply scaling ──
             if hasattr(self, '_last_screenshot_size') and hasattr(self, '_last_screen_resolution'):
                 img_w, img_h = self._last_screenshot_size
                 screen_w, screen_h = self._last_screen_resolution
-                
+
                 # Calculate scale factors
                 scale_x = screen_w / img_w
                 scale_y = screen_h / img_h
-                
+
                 # Convert to real screen coordinates
                 real_x = int(model_x * scale_x)
                 real_y = int(model_y * scale_y)
-                
+
                 logger.info(f"Scaling coords: [{model_x}, {model_y}] (image {img_w}x{img_h}) → [{real_x}, {real_y}] (screen {screen_w}x{screen_h})")
-                
+
                 target = [real_x, real_y]
             else:
                 logger.warning("No sizing info, using pixel coords as-is")
         # ────────────────────────────────────────────────────────────────
-        
+
         # Low confidence - ask for confirmation
         if confidence < 0.7:
             self.history_popup.add_message(
