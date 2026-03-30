@@ -42,6 +42,7 @@ from qwen_desktop.ui.components.attach_button import AttachButton
 from qwen_desktop.ui.components.send_button import SendButton
 from qwen_desktop.ui.components.settings_button import SettingsButton
 from qwen_desktop.ui.components.uied_button import UIEDButton, UIEDResultsPanel
+from qwen_desktop.ui.uied_overlay import UIEDOverlayWidget
 
 logger = logging.getLogger(__name__)
 
@@ -456,10 +457,9 @@ class FloatingAssistant(QWidget):
         # UI Automation provides 100% accurate coordinates from OS
         self._use_ui_automation = UI_AUTOMATION_AVAILABLE
 
-        # ── NEW: UIED Service for UI Element Detection ──
-        # Captures screenshots, detects components, labels with LLM
-        self._uied_service = None
-        self._uied_results_panel = None
+        # ── Manual Box Creator Overlay ──
+        self._uied_overlay = None  # Manual box creation overlay
+        self._uied_components = []  # User-created components
         self._is_uied_detecting = False
 
         # Hook up sessions logic
@@ -1712,21 +1712,179 @@ Be PRECISE - center of element. Example:
 
     def trigger_uied_detection(self):
         """
-        Trigger UI Element Detection.
+        Open manual box creation overlay.
         
-        Captures screenshot, detects UI components using OpenCV,
-        and labels them using Qwen Vision LLM.
+        User will manually draw boxes, label them, and save.
+        No auto-detection - 100% manual control.
         """
         if self._is_uied_detecting:
-            logger.info("UIED detection already in progress")
+            logger.info("Box editor already open")
             return
         
-        if not self.api_client:
-            self._show_uied_error("Please login first")
-            return
+        logger.info("Opening manual box editor overlay")
+        self._is_uied_detecting = True
+        self.uied_btn.set_detecting(True)
         
-        # Initialize UIED service
-        from qwen_desktop.core.uied_service import UIEDService
+        # Show overlay with empty component list (user creates manually)
+        self._show_uied_overlay([])
+    
+    def _show_uied_overlay(self, components: list):
+        """Show manual box creation overlay."""
+        if self._uied_overlay is None:
+            self._uied_overlay = UIEDOverlayWidget(self)
+            self._uied_overlay.component_edited.connect(self._on_uied_component_edited)
+            self._uied_overlay.component_added.connect(self._on_uied_component_added)
+            self._uied_overlay.component_deleted.connect(self._on_uied_component_deleted)
+            self._uied_overlay.close_requested.connect(self._on_uied_overlay_closed)
+        
+        self._uied_overlay.set_components(components)
+        self._uied_overlay.show()
+        self._uied_overlay.activateWindow()
+        
+        logger.info("Manual box editor overlay shown")
+    
+    def _on_uied_component_edited(self, index: int, new_label: str, new_type: str):
+        """Handle component label edit from overlay."""
+        import os
+        
+        if 0 <= index < len(self._uied_components):
+            comp = self._uied_components[index]
+            
+            # Update label and type
+            comp['label'] = new_label
+            comp['component_type'] = new_type
+            
+            # Rename template file to match new label
+            old_path = comp.get('template_path')
+            if old_path and os.path.exists(old_path):
+                try:
+                    template_dir = os.path.dirname(old_path)
+                    # Create filename with label and type as tag
+                    safe_label = new_label.replace(' ', '_').replace('/', '_')[:40]
+                    new_filename = f"{comp['id']}_{safe_label}_{new_type}.png"
+                    new_path = os.path.join(template_dir, new_filename)
+                    
+                    os.rename(old_path, new_path)
+                    comp['template_path'] = new_path
+                    logger.info(f"Template renamed: {new_filename}")
+                except Exception as e:
+                    logger.error(f"Failed to rename template: {e}")
+            
+            logger.info(f"Component {index} edited: {new_label} [{new_type}]")
+            
+            # Update overlay
+            self._uied_overlay.set_components(self._uied_components)
+    
+    def _on_uied_component_added(self, x: int, y: int, w: int, h: int, label: str, comp_type: str):
+        """Handle new component added from overlay."""
+        import uuid
+        import cv2
+        import numpy as np
+        from PyQt6.QtWidgets import QApplication
+        from PyQt6.QtCore import QBuffer, QIODevice
+        from PIL import Image
+        import io
+        
+        new_component = {
+            'id': f"comp_user_{uuid.uuid4().hex[:6]}",
+            'label': label,
+            'component_type': comp_type,
+            'x': x,
+            'y': y,
+            'width': w,
+            'height': h,
+            'center_x': x + w // 2,
+            'center_y': y + h // 2,
+            'confidence': 1.0,
+            'template_path': None,
+            '_template_gray': None,
+            '_template_rgb': None
+        }
+        
+        # Capture template using Qt's grabWindow (same coordinate system as widget)
+        try:
+            logger.info(f"🎯 Capturing template at widget coordinates: ({x}, {y}) {w}x{h}")
+            
+            # ✅ FIX: Hide overlay BEFORE capturing to avoid capturing the box itself
+            if self._uied_overlay:
+                self._uied_overlay.hide()
+                QApplication.processEvents()  # Ensure hide is processed
+            
+            # Small delay to ensure overlay is fully hidden
+            import time
+            time.sleep(0.05)
+            
+            # Use Qt's grabWindow - NO DPI issues!
+            screen = QApplication.primaryScreen()
+            pixmap = screen.grabWindow(0, x, y, w, h)
+            
+            # Show overlay again AFTER capturing
+            if self._uied_overlay:
+                self._uied_overlay.show()
+                QApplication.processEvents()
+            
+            if pixmap.isNull():
+                logger.error("❌ grabWindow returned null pixmap")
+                return
+            
+            logger.info(f"📸 Pixmap size: {pixmap.width()}x{pixmap.height()}")
+            
+            # Convert QPixmap to OpenCV format (BGR)
+            buffer = QBuffer()
+            buffer.open(QIODevice.OpenModeFlag.ReadWrite)
+            pixmap.save(buffer, "PNG")
+            
+            img = Image.open(io.BytesIO(bytes(buffer.data())))
+            template_rgb = np.array(img)
+            template_bgr = cv2.cvtColor(template_rgb, cv2.COLOR_RGB2BGR)
+            
+            logger.info(f"💾 Template captured: {template_bgr.shape}")
+            
+            # Store in RGB format (not grayscale)
+            new_component['_template_rgb'] = template_bgr  # Store BGR for saving
+            new_component['_template_gray'] = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2GRAY)
+            
+            logger.info(f"✅ Template captured successfully using Qt grabWindow")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to capture template: {e}", exc_info=True)
+        
+        self._uied_components.append(new_component)
+        self._uied_overlay.set_components(self._uied_components)
+        
+        logger.info(f"📦 New component added: {label} [{comp_type}] at ({x}, {y}) {w}x{h}")
+    
+    def _on_uied_component_deleted(self, index: int):
+        """Handle component deletion from overlay."""
+        import os
+        
+        if 0 <= index < len(self._uied_components):
+            deleted = self._uied_components.pop(index)
+            
+            # Delete template file
+            template_path = deleted.get('template_path')
+            if template_path and os.path.exists(template_path):
+                try:
+                    os.remove(template_path)
+                    logger.info(f"Template deleted: {template_path}")
+                except Exception as e:
+                    logger.error(f"Failed to delete template: {e}")
+            
+            # Update overlay
+            self._uied_overlay.set_components(self._uied_components)
+            
+            logger.info(f"Component {index} deleted: {deleted.get('label')}")
+    
+    def _on_uied_overlay_closed(self):
+        """Handle overlay close - save all user-created components when Done is clicked."""
+        logger.info(f"Manual box editor closed. Final component count: {len(self._uied_components)}")
+        
+        # Save all user-created components with their labels and templates
+        saved_count = 0
+        
+        # Save templates to disk with user-edited labels
+        import pyautogui
+        import numpy as np
         import os
         
         template_dir = os.path.join(
@@ -1734,93 +1892,59 @@ Be PRECISE - center of element. Example:
             ".qwen_desktop",
             "uied_templates"
         )
+        os.makedirs(template_dir, exist_ok=True)
         
-        self._uied_service = UIEDService(
-            api_client=self.api_client,
-            template_dir=template_dir
-        )
+        for comp_dict in self._uied_components:
+            try:
+                # PRIORITY 1: Use RGB template from memory (captured when user drew/resized the box)
+                if '_template_rgb' in comp_dict and comp_dict['_template_rgb'] is not None:
+                    template = comp_dict['_template_rgb']  # Already in RGB/BGR format
+                    
+                    # Create filename with user's label and type
+                    safe_label = comp_dict.get('label', 'unknown').replace(' ', '_').replace('/', '_')[:40]
+                    comp_type = comp_dict.get('component_type', 'other')
+                    template_filename = f"{comp_dict.get('id', 'user')}_{safe_label}_{comp_type}.png"
+                    template_path = os.path.join(template_dir, template_filename)
+                    
+                    # Save template in RGB color (NOT grayscale)
+                    cv2.imwrite(template_path, template)
+                    saved_count += 1
+                    logger.info(f"✅ Saved RGB template: {template_filename} {template.shape}")
+                
+                # FALLBACK: Use grayscale and convert (shouldn't happen normally)
+                elif '_template_gray' in comp_dict and comp_dict['_template_gray'] is not None:
+                    template_gray = comp_dict['_template_gray']
+                    template = cv2.cvtColor(template_gray, cv2.COLOR_GRAY2BGR)
+                    
+                    safe_label = comp_dict.get('label', 'unknown').replace(' ', '_').replace('/', '_')[:40]
+                    comp_type = comp_dict.get('component_type', 'other')
+                    template_filename = f"{comp_dict.get('id', 'user')}_{safe_label}_{comp_type}.png"
+                    template_path = os.path.join(template_dir, template_filename)
+                    
+                    cv2.imwrite(template_path, template)
+                    saved_count += 1
+                    logger.info(f"⚠️ Saved grayscale template (fallback): {template_filename}")
+                    
+            except Exception as e:
+                logger.error(f"Failed to save template: {e}")
         
-        # Connect signals
-        self._uied_service.detection_started.connect(self._on_uied_started)
-        self._uied_service.detection_complete.connect(self._on_uied_complete)
-        self._uied_service.detection_error.connect(self._on_uied_error)
-        self._uied_service.progress_update.connect(self._on_uied_progress)
-        
-        # Start detection
-        self._is_uied_detecting = True
-        self.uied_btn.set_detecting(True)
-        
-        success = self._uied_service.capture_and_detect()
-        
-        if not success:
-            self._on_uied_error("Failed to start detection")
-    
-    def _on_uied_started(self):
-        """Handle UIED detection started."""
-        logger.info("UIED detection started")
-        self.uied_btn.set_detecting(True)
-        self.uied_btn.set_has_results(False, 0)
-        
-        # Show progress in chat
-        self.history_popup.add_message("🔍 Scanning screen for UI elements...", "ai")
-    
-    def _on_uied_progress(self, message: str):
-        """Handle UIED progress update."""
-        logger.debug(f"UIED progress: {message}")
-        # Update last message with progress
-        if self.history_popup.msg_layout.count() > 0:
-            last_item = self.history_popup.msg_layout.itemAt(
-                self.history_popup.msg_layout.count() - 1
-            )
-            if last_item and last_item.widget():
-                # Could update a progress indicator here
-                pass
-    
-    def _on_uied_complete(self, components: list):
-        """Handle UIED detection complete."""
-        self._is_uied_detecting = False
-        self.uied_btn.set_detecting(False)
-        self.uied_btn.set_has_results(True, len(components))
-        
-        logger.info(f"UIED detection complete: {len(components)} components")
-        
-        # Update chat message
-        while self.history_popup.msg_layout.count():
-            item = self.history_popup.msg_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        
+        # Show summary
         self.history_popup.add_message(
-            f"✅ Found {len(components)} UI elements! Click the button to view.",
+            f"📋 Box editor closed. {len(self._uied_components)} components created.\n"
+            f"✅ {saved_count} components labeled and saved to disk (RGB color).",
             "ai"
         )
         
-        # Store components
-        self._uied_components = components
+        # Hide overlay
+        if self._uied_overlay:
+            self._uied_overlay.hide()
+            self._uied_overlay.close()
+            self._uied_overlay = None
         
-        # Show results panel
-        self._show_uied_results_panel(components)
-    
-    def _on_uied_error(self, error: str):
-        """Handle UIED detection error."""
+        # Reset state
+        self._uied_components = []
         self._is_uied_detecting = False
-        self.uied_btn.set_detecting(False)
-        
-        logger.error(f"UIED detection error: {error}")
-        self._show_uied_error(error)
-    
-    def _show_uied_error(self, error: str):
-        """Show UIED error message."""
-        self.history_popup.add_message(f"❌ UIED Error: {error}", "ai")
-    
-    def _show_uied_results_panel(self, components: list):
-        """Show the UIED results panel."""
-        if self._uied_results_panel is None:
-            self._uied_results_panel = UIEDResultsPanel(self)
-            self._uied_results_panel.component_selected.connect(self._on_uied_component_selected)
-        
-        self._uied_results_panel.set_components(components)
-        self._uied_results_panel.show_at_cursor()
+        self.uied_btn.set_has_results(False, 0)
     
     def _on_uied_component_selected(self, component: dict):
         """Handle component selection from results panel."""
