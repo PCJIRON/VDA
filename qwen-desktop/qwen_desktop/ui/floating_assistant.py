@@ -461,6 +461,12 @@ class FloatingAssistant(QWidget):
         self._uied_overlay = None  # Manual box creation overlay
         self._uied_components = []  # User-created components
         self._is_uied_detecting = False
+        
+        # ── Autonomous Task Execution State ──
+        self._autonomous_mode = False
+        self._original_task = ""
+        self._task_step_count = 0
+        self._max_task_steps = 20  # Safety limit
 
         # Hook up sessions logic
         self.load_session_clicked = lambda u: self._switch_to_session(u)
@@ -962,6 +968,9 @@ class FloatingAssistant(QWidget):
             parent_uuid=self.last_msg_uuid,
         )
 
+        # Convert send button to stop button
+        self._set_stop_mode()
+
         # Fire API (vision_mode=True injects expert system prompt)
         self.worker = APIServerWorker(
             self.api_client, payload, self._chat_history, vision_mode=True
@@ -1110,9 +1119,67 @@ class FloatingAssistant(QWidget):
                 
                 logger.info(f"Vision screenshot: {img_w}x{img_h} → Screen: {sw}x{sh}")
                 
-                # ── CRITICAL: Ask for NORMALIZED coordinates (0.0-1.0) ──
-                # Yeh resolution-independent hai - koi bhi size ho, kaam karega!
-                vision_prompt = f"""
+                # ── CRITICAL: Ask for NORMALIZED coordinates ──
+                # For complex tasks, ask for step-by-step breakdown FIRST
+                complex_task_keywords = ['open', 'search', 'play', 'type', 'click', 'save', 'create', 'write', 'send']
+                is_complex = any(kw in text.lower() for kw in complex_task_keywords) if text else False
+
+                if is_complex and text and len(text.split()) > 3:
+                    # Complex multi-step task - ENABLE AUTONOMOUS MODE
+                    self._autonomous_mode = True
+                    self._original_task = text
+                    self._task_step_count = 0
+                    
+                    vision_prompt = f"""
+[VISION TASK - MULTI-STEP AUTONOMOUS]
+User wants: "{text}"
+
+**IMPORTANT:** This is a multi-step task. You need to guide me through EACH STEP ONE BY ONE.
+
+**YOUR RESPONSE FORMAT:**
+1. First, provide a brief plan (numbered steps)
+2. Then, for the FIRST step only, provide JSON action:
+
+```json
+{{
+    "action": "click",
+    "target_name": "element to click",
+    "description": "why this element"
+}}
+```
+
+**AVAILABLE ACTIONS:**
+- `click` - Click on something (requires `target_name`)
+- `type` - Type text (requires `text_input`)
+- `press_key` - Press a key (requires `text_input` like "Enter", "Ctrl+C")
+- `double_click` - Double-click
+- `open_app` - Open an application
+
+**EXAMPLE RESPONSE:**
+```
+📋 **Plan:**
+1. Open Chrome browser
+2. Navigate to youtube.com
+3. Click on search bar
+4. Type song name
+5. Press Enter
+
+**Step 1:** Click on Chrome icon to open the browser.
+```json
+{{
+    "action": "click",
+    "target_name": "Chrome icon",
+    "description": "Chrome icon in taskbar"
+}}
+```
+```
+
+After I execute Step 1, I will send you a NEW screenshot and you provide Step 2.
+Continue until the task "{text}" is COMPLETE.
+"""
+                else:
+                    # Simple single action - direct coordinates
+                    vision_prompt = f"""
 [VISION TASK]
 Find this element: "{text if text else 'the element near mouse cursor'}"
 
@@ -1156,6 +1223,9 @@ Be PRECISE - center of element. Example:
                     content_payload.append({"type": "text", "text": ""})
                 content_payload[0]['text'] += f"\n\n<document path='{att['name']}'>\n{att['content']}\n</document>"
 
+        # Convert send button to stop button
+        self._set_stop_mode()
+
         self.worker = APIServerWorker(
             self.api_client,
             content_payload if len(content_payload) > 1 else text,
@@ -1182,71 +1252,108 @@ Be PRECISE - center of element. Example:
 
         # NOTE: Qwen Vision can now trigger UIED execution
         # When LLM returns JSON with action + target_name, use UIED template matching
-        
+
         # Check if Qwen returned JSON with action and target_name
-        if '"action"' in full_text and ('"target_name"' in full_text or '"description"' in full_text):
+        has_action = '"action"' in full_text
+        has_target = '"target_name"' in full_text or '"description"' in full_text
+        
+        if has_action and has_target:
             logger.info("Qwen returned action with target - triggering UIED execution")
             QTimer.singleShot(500, lambda: self._execute_uied_from_llm(full_text))
+
+        # ── AUTONOMOUS TASK CONTINUATION ──────────────────────────────────────
+        # Check if we're in autonomous mode (for non-JSON responses or planning phase)
+        if self._autonomous_mode and self._task_step_count < self._max_task_steps:
+            # Check if LLM indicated task is complete
+            is_complete = any(keyword in full_text.lower() for keyword in [
+                'done', 'complete', 'finished', 'all set', 'task accomplished'
+            ])
+
+            # Only continue if NOT complete and NO action to execute
+            if not is_complete and not (has_action and has_target):
+                # Task not complete - continue with next step
+                logger.info(f"Task step {self._task_step_count} complete, continuing...")
+                QTimer.singleShot(1500, self._take_screenshot_and_continue)
+            elif is_complete:
+                # Task complete!
+                logger.info("✅ Autonomous task completed!")
+                self._autonomous_mode = False
+                self._original_task = ""
+                self._task_step_count = 0
+                self.history_popup.add_message("✅ Task completed successfully!", "ai")
     
     def _execute_uied_from_llm(self, llm_response: str):
         """
         Execute action based on LLM's response using UIED template matching.
-        
+
         LLM returns JSON like:
         {
             "action": "click",
             "target_name": "Chrome icon",
             "description": "Found Chrome icon in taskbar"
         }
-        OR (old format):
+        OR for keyboard actions:
         {
-            "action": "click",
-            "target_normalized": [0.72, 0.95],
-            "description": "Found Chrome icon in taskbar"
+            "action": "press_key",
+            "text_input": "Enter",
+            "description": "Press Enter to search"
         }
-        
+
         This method:
-        1. Extracts target from description (if target_name missing)
-        2. Finds matching UIED template
-        3. Executes via template matching
+        1. Extracts action type and target
+        2. For UI actions: Finds matching UIED template and executes
+        3. For keyboard/app actions: Executes directly
+        4. Triggers continuation for next step
         """
         import json
         import re
-        
+
         # Try to extract JSON from response
         # Pattern 1: ```json { ... } ```
         json_match = re.search(r'```json\s*({.*?})\s*```', llm_response, re.DOTALL)
         if not json_match:
             # Pattern 2: Just { ... } with action
             json_match = re.search(r'({.*?"action".*?})', llm_response, re.DOTALL)
-        
+
         if not json_match:
             logger.warning(f"No JSON found in LLM response: {llm_response[:200]}")
             return
-        
+
         try:
             action_data = json.loads(json_match.group(1))
             action = action_data.get('action', 'click')
             target_name = action_data.get('target_name', '')
             description = action_data.get('description', '')
-            
+            text_input = action_data.get('text_input', '')
+
             logger.info(f"UIED-LLM: Parsed JSON: {action_data}")
-            logger.info(f"UIED-LLM: Action={action}, Target={target_name}, Desc={description}")
+            logger.info(f"UIED-LLM: Action={action}, Target={target_name}, Desc={description}, Text={text_input}")
+
+            # ── DIRECT ACTIONS (no visual target needed) ──────────────────────
+            direct_actions = ['press_key', 'shortcut', 'type', 'open_app', 'wait', 'scroll']
             
+            if action in direct_actions:
+                self._execute_direct_action(action, text_input, description)
+                
+                # Trigger continuation
+                if self._autonomous_mode:
+                    self._task_step_count += 1
+                    logger.info(f"Scheduling continuation after {action}...")
+                    QTimer.singleShot(2000, self._take_screenshot_and_continue)
+                return
+
+            # ── UI ACTIONS (require visual target) ────────────────────────────
             # If target_name is missing, extract from description
             if not target_name and description:
-                # Extract target from description
-                # E.g., "Found Chrome icon in taskbar" → "Chrome icon"
                 match = re.search(r'Found ([A-Za-z0-9\s\-_]+?)(?:\s+(?:icon|button|logo|text|element|in|at|on|the|a))', description, re.IGNORECASE)
                 if match:
                     target_name = match.group(1).strip()
                     logger.info(f"UIED-LLM: Extracted target from description: '{target_name}'")
                 else:
-                    # Fallback: use first few words
                     words = description.split()[:3]
                     target_name = ' '.join(words).replace('"', '').replace("'", '')[:30]
                     logger.info(f"UIED-LLM: Fallback target: '{target_name}'")
-            
+
             if not target_name:
                 logger.warning("UIED-LLM: No target_name in response")
                 self.history_popup.add_message(
@@ -1254,29 +1361,46 @@ Be PRECISE - center of element. Example:
                     "ai"
                 )
                 return
-            
+
             # Show that we're processing
             self.history_popup.add_message(
                 f"🔍 Finding '{target_name}' on screen...",
                 "ai"
             )
-            
+
             # Search for matching template in UIED templates
             template_path = self._find_uied_template_for_target(target_name)
-            
+
             if not template_path:
-                logger.warning(f"UIED-LLM: No template found for '{target_name}'")
-                self.history_popup.add_message(
-                    f"⚠️ '{target_name}' not found in detected components.\n"
-                    f"Click UIED button (⊞) to scan screen first.",
-                    "ai"
-                )
-                return
-            
+                # Template not found - trigger replanning with error context
+                logger.warning(f"UIED-LLM: Template not found for '{target_name}'")
+                
+                if self._autonomous_mode:
+                    # In autonomous mode, ask LLM to replan
+                    self.history_popup.add_message(
+                        f"⚠️ '{target_name}' not found on current screen.\n"
+                        f"🔄 Replanning based on current screen state...",
+                        "ai"
+                    )
+                    
+                    # Increment step and trigger replanning
+                    self._task_step_count += 1
+                    
+                    # Take screenshot and let LLM know the element was missing
+                    QTimer.singleShot(1000, lambda: self._replan_after_error(target_name))
+                    return
+                else:
+                    self.history_popup.add_message(
+                        f"⚠️ '{target_name}' not found in detected components.\n"
+                        f"Click UIED button (⊞) to scan screen first.",
+                        "ai"
+                    )
+                    return
+
             # Execute via template matching
             logger.info(f"UIED-LLM: Found template: {template_path}")
             coords = self._pyautogui_executor.find_with_template(template_path, threshold=0.7)
-            
+
             if coords:
                 cx, cy = coords
                 logger.info(f"UIED-LLM: Match found at ({cx}, {cy})")
@@ -1284,16 +1408,35 @@ Be PRECISE - center of element. Example:
                     f"✅ Found '{target_name}' at ({cx}, {cy})\nExecuting: {action}",
                     "ai"
                 )
-                
+
                 # Execute the action
                 self._execute_uied_action(action, cx, cy, {'label': target_name})
+
+                # ── TRIGGER CONTINUATION ──────────────────────────────────────
+                if self._autonomous_mode:
+                    self._task_step_count += 1
+                    logger.info(f"Scheduling continuation after {action}...")
+                    QTimer.singleShot(2000, self._take_screenshot_and_continue)
             else:
-                self.history_popup.add_message(
-                    f"❌ Could not locate '{target_name}' on current screen.\n"
-                    f"The screen may have changed.",
-                    "ai"
-                )
+                # Template matching failed - screen may have changed
+                logger.warning(f"UIED-LLM: Template matching failed for '{target_name}'")
                 
+                if self._autonomous_mode:
+                    self.history_popup.add_message(
+                        f"❌ Could not locate '{target_name}' on current screen.\n"
+                        f"🔄 Screen changed - replanning...",
+                        "ai"
+                    )
+                    
+                    self._task_step_count += 1
+                    QTimer.singleShot(1000, lambda: self._replan_after_error(target_name))
+                else:
+                    self.history_popup.add_message(
+                        f"❌ Could not locate '{target_name}' on current screen.\n"
+                        f"The screen may have changed.",
+                        "ai"
+                    )
+
         except json.JSONDecodeError as e:
             logger.error(f"UIED-LLM: Failed to parse JSON: {e}")
             logger.error(f"UIED-LLM: Raw response: {llm_response[:500]}")
@@ -1302,6 +1445,301 @@ Be PRECISE - center of element. Example:
             logger.error(f"UIED-LLM: Error: {e}", exc_info=True)
             self.history_popup.add_message(f"❌ Error: {e}", "ai")
     
+    def _take_screenshot_and_continue(self):
+        """
+        Take fresh screenshot and send to LLM for next step.
+
+        This is called after each action execution to continue the task.
+        Includes full context: original task, plan history, and current screen.
+        Enables dynamic replanning if elements are missing.
+        """
+        if not self._autonomous_mode:
+            return
+
+        if self._task_step_count >= self._max_task_steps:
+            self.history_popup.add_message(
+                f"⚠️ Reached maximum steps ({self._max_task_steps}). Task stopped.",
+                "ai"
+            )
+            self._autonomous_mode = False
+            return
+
+        try:
+            import pyautogui
+            import io
+            import base64
+
+            # Take fresh screenshot
+            screenshot = pyautogui.screenshot()
+            sw, sh = pyautogui.size()
+            mx, my = pyautogui.position()
+
+            # Convert to base64
+            buf = io.BytesIO()
+            screenshot.save(buf, format="PNG", optimize=True)
+            b64 = base64.b64encode(buf.getvalue()).decode()
+
+            logger.info(f"Continuation screenshot: {sw}x{sh} @ ({mx},{my})")
+
+            # Build comprehensive continuation prompt with full context
+            continuation_prompt = f"""
+[🔄 AUTONOMOUS TASK CONTINUATION - Step {self._task_step_count + 1}]
+
+## 🎯 ORIGINAL TASK (DO NOT FORGET):
+"{self._original_task}"
+
+## 📋 TASK PROGRESS:
+- Steps completed: {self._task_step_count}
+- Maximum steps allowed: {self._max_task_steps}
+
+## 🖥️ CURRENT SCREEN STATE:
+- Screen Resolution: {sw}x{sh}
+- Mouse Position: ({mx}, {my})
+- Screenshot attached below 👇
+
+## ⚠️ IMPORTANT INSTRUCTIONS:
+
+1. **ANALYZE CURRENT SCREEN FIRST** - What do you see NOW?
+2. **CHECK IF ORIGINAL TASK IS COMPLETE** - Has user achieved their goal?
+3. **ADAPT TO CHANGES** - If screen changed, adjust your plan
+4. **MISSING ELEMENTS?** - Find alternative path, DON'T get stuck
+5. **ONE STEP AT A TIME** - Return ONLY the NEXT action
+
+## 🔍 DECISION FLOW:
+
+**Q1: Is the original task "{self._original_task}" COMPLETE?**
+→ If YES: Say "✅ Task Complete" and explain what was accomplished
+
+**Q2: Is the current screen DIFFERENT from expected?** (e.g., new window opened, page changed)
+→ If YES: Adapt! Find the NEXT logical step based on what you see NOW
+
+**Q3: Is the target element from previous step MISSING?**
+→ If YES: Don't retry! Find alternative or ask user for clarification
+
+**Q4: Are you stuck in a loop?** (same action repeated)
+→ If YES: Try a completely different approach
+
+## 📝 OUTPUT FORMAT:
+
+Respond in this EXACT format:
+
+```
+📊 **Screen Analysis:** [What you see on current screen]
+
+🎯 **Progress Check:** [How close to completing original task]
+
+🔧 **Next Action:** [What to do next and why]
+
+```json
+{{
+    "action": "click",
+    "target_name": "element name",
+    "description": "Why this element and what you expect"
+}}
+```
+
+OR if task is complete:
+```
+✅ **Task Complete!**
+
+[Explanation of what was accomplished]
+```
+
+## 🚀 AVAILABLE ACTIONS:
+
+| Action | Use For | Example |
+|--------|---------|---------|
+| `click` | Click buttons, icons, links | `target_name: "Submit button"` |
+| `double_click` | Open files, apps | `target_name: "Chrome icon"` |
+| `type` | Type text (after clicking input) | `text_input: "Python tutorial"` |
+| `press_key` | Press keyboard keys | `text_input: "Enter"` |
+| `shortcut` | Keyboard shortcuts | `text_input: "Ctrl+V"` |
+| `open_app` | Launch applications | `text_input: "Notepad"` |
+| `wait` | Wait for UI to load | `text_input: "3"` (seconds) |
+| `scroll` | Scroll page | `text_input: "down"` |
+
+## 💡 CRITICAL REMINDERS:
+
+- **DON'T repeat actions** that already failed
+- **DON'T insist on exact elements** if screen changed
+- **DO adapt** to what you see NOW
+- **DO declare task complete** when user's goal is achieved
+- **Think like a human operator** - flexible, not rigid
+
+---
+
+**NOW ANALYZE THE SCREENSHOT AND PROVIDE THE NEXT ACTION:**
+"""
+
+            # Show progress
+            self.history_popup.add_message(
+                f"🔄 Step {self._task_step_count}: Analyzing screen for next action...",
+                "ai"
+            )
+
+            # Send to LLM
+            # Keep stop button active during autonomous continuation
+            self._set_stop_mode()
+            
+            content_payload = [
+                {"type": "text", "text": continuation_prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+            ]
+
+            self.worker = APIServerWorker(
+                self.api_client,
+                content_payload,
+                self._chat_history,
+                vision_mode=True,
+            )
+            self.worker.chunk_received.connect(self._on_api_chunk)
+            self.worker.finished_response.connect(self._on_api_finished)
+            self.worker.error_occurred.connect(self._on_api_error)
+            self.worker.start()
+
+            self._chat_history.append({"role": "user", "content": content_payload})
+
+        except Exception as e:
+            logger.error(f"Continuation failed: {e}", exc_info=True)
+            self.history_popup.add_message(f"❌ Continuation error: {e}", "ai")
+            self._autonomous_mode = False
+
+    def _replan_after_error(self, missing_element: str):
+        """
+        Trigger dynamic replanning when an element is missing or action fails.
+
+        Takes a screenshot and asks LLM to replan based on current screen state,
+        considering that the previous approach didn't work.
+
+        Args:
+            missing_element: Name of the element that couldn't be found
+        """
+        if not self._autonomous_mode:
+            return
+
+        try:
+            import pyautogui
+            import io
+            import base64
+
+            # Take fresh screenshot
+            screenshot = pyautogui.screenshot()
+            sw, sh = pyautogui.size()
+            mx, my = pyautogui.position()
+
+            # Convert to base64
+            buf = io.BytesIO()
+            screenshot.save(buf, format="PNG", optimize=True)
+            b64 = base64.b64encode(buf.getvalue()).decode()
+
+            logger.info(f"Replan screenshot: {sw}x{sh} @ ({mx},{my})")
+
+            # Build replan prompt with error context
+            replan_prompt = f"""
+[🚨 DYNAMIC REPLAN REQUEST - Step {self._task_step_count}]
+
+## 🎯 ORIGINAL TASK (STILL ACTIVE):
+"{self._original_task}"
+
+## ❌ PREVIOUS ACTION FAILED:
+- **Attempted to find:** "{missing_element}"
+- **Result:** Element NOT FOUND on current screen
+- **Reason:** Screen state changed OR element doesn't exist
+
+## 🖥️ CURRENT SCREEN STATE:
+- Screen Resolution: {sw}x{sh}
+- Mouse Position: ({mx}, {my})
+- Screenshot attached below 👇
+
+## ⚠️ CRITICAL INSTRUCTIONS:
+
+1. **DON'T retry** the same element - it doesn't exist!
+2. **ANALYZE** what's DIFFERENT on the screen now
+3. **IDENTIFY** what the screen IS showing (what page/window is this?)
+4. **DETERMINE** if we're closer to or farther from the goal
+5. **CREATE NEW PLAN** based on CURRENT reality
+
+## 🔍 DIAGNOSTIC QUESTIONS:
+
+**Q1:** What screen/window/page is this now?
+**Q2:** Did the previous action partially succeed? (e.g., opened wrong app but app is open)
+**Q3:** What elements ARE available that we can use?
+**Q4:** Is there an ALTERNATIVE PATH to achieve the original goal?
+**Q5:** Should we ABANDON the current approach and start fresh?
+
+## 📝 OUTPUT FORMAT:
+
+```
+🔴 **Problem:** [Why previous action failed]
+
+📊 **Current State:** [What you see now]
+
+💡 **New Strategy:** [Alternative approach]
+
+🔧 **Next Action:** [Immediate next step]
+
+```json
+{{
+    "action": "click",
+    "target_name": "new target",
+    "description": "Why this will work"
+}}
+```
+
+OR if they should abort:
+```
+⚠️ **Recommendation:** [Explain why task should be aborted or needs user input]
+```
+
+## 💡 EXAMPLE SCENARIOS:
+
+**Scenario:** Trying to click "Submit" button but screen shows error page
+→ **Response:** "Screen shows error. Need to dismiss error first or try alternative approach"
+
+**Scenario:** Looking for Chrome icon but Start Menu is open
+→ **Response:** "Start Menu is open. Either close it and find Chrome, or type 'Chrome' in Start Menu search"
+
+**Scenario:** Element not found because page scrolled
+→ **Response:** "Page scrolled. Need to scroll back or find element in visible area"
+
+---
+
+**ANALYZE THE SCREENSHOT AND PROVIDE A NEW PLAN:**
+"""
+
+            # Show progress
+            self.history_popup.add_message(
+                f"🚨 Element '{missing_element}' not found. Replanning...",
+                "ai"
+            )
+
+            # Send to LLM
+            # Keep stop button active during replanning
+            self._set_stop_mode()
+            
+            content_payload = [
+                {"type": "text", "text": replan_prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+            ]
+
+            self.worker = APIServerWorker(
+                self.api_client,
+                content_payload,
+                self._chat_history,
+                vision_mode=True,
+            )
+            self.worker.chunk_received.connect(self._on_api_chunk)
+            self.worker.finished_response.connect(self._on_api_finished)
+            self.worker.error_occurred.connect(self._on_api_error)
+            self.worker.start()
+
+            self._chat_history.append({"role": "user", "content": content_payload})
+
+        except Exception as e:
+            logger.error(f"Replan failed: {e}", exc_info=True)
+            self.history_popup.add_message(f"❌ Replan error: {e}", "ai")
+            self._autonomous_mode = False
+
     def _find_uied_template_for_target(self, target_name: str) -> Optional[str]:
         """
         Find a UIED template that matches the target name.
@@ -1659,32 +2097,28 @@ Be PRECISE - center of element. Example:
     def _set_stop_mode(self):
         """Convert send button to red stop button during API call."""
         self._is_sending = True
-        self.send_btn.setStyleSheet("""
-            QPushButton {
-                background: #ef4444;
-                border: none; border-radius: 8px;
-                color: white; font-size: 16px; font-weight: bold;
-            }
-            QPushButton:hover { background: #dc2626; }
-        """)
+        # Use SendButton's built-in stop mode (red square with ■ icon)
+        self.send_btn.set_stop_mode(True)
+        # Disconnect old connections
         try:
             self.send_btn.clicked.disconnect()
         except Exception:
             pass
+        # Connect to stop handler
         self.send_btn.clicked.connect(self._stop_worker)
-        self.send_btn.setText("■")
 
     def _set_send_mode(self):
         """Restore send button to normal state."""
         self._is_sending = False
-        self.send_btn.setStyleSheet("")   # BaseButton paints itself
-        self.send_btn.setText("")         # BaseButton draws the icon
+        # Use SendButton's built-in send mode (rounded with arrow icon)
+        self.send_btn.set_stop_mode(False)
+        # Disconnect old connections
         try:
             self.send_btn.clicked.disconnect()
         except Exception:
             pass
+        # Connect to submit handler
         self.send_btn.clicked.connect(self.submit_message)
-        self.send_btn.update()
 
     def _stop_worker(self):
         """Abort the running API worker and restore UI."""
@@ -2106,10 +2540,108 @@ Be PRECISE - center of element. Example:
             
             # Re-enable fail-safe
             pyautogui.FAILSAFE = True
-            
+
             logger.info(f"UIED: Action '{action}' completed successfully")
-            
+
         except Exception as e:
             error_msg = f"Action '{action}' failed: {str(e)}"
             logger.error(f"UIED: {error_msg}", exc_info=True)
+            self.history_popup.add_message(f"❌ {error_msg}", "ai")
+
+    def _execute_direct_action(self, action: str, text_input: str, description: str):
+        """
+        Execute actions that don't require visual target detection.
+        
+        Handles: press_key, shortcut, type, open_app, wait, scroll
+        """
+        import pyautogui
+        import time
+        
+        logger.info(f"Direct action: {action} with text_input='{text_input}'")
+        
+        try:
+            if action == 'press_key':
+                # Press a single key
+                key = text_input.strip()
+                logger.info(f"Pressing key: {key}")
+                pyautogui.press(key)
+                self.history_popup.add_message(f"✅ Pressed '{key}' - {description}", "ai")
+                
+            elif action == 'shortcut':
+                # Keyboard shortcut like Ctrl+C, Alt+Tab
+                shortcut = text_input.strip()
+                logger.info(f"Executing shortcut: {shortcut}")
+                keys = shortcut.lower().replace(' ', '').split('+')
+                
+                # Map common key names
+                key_map = {
+                    'ctrl': 'ctrl', 'control': 'ctrl',
+                    'alt': 'alt', 'option': 'alt',
+                    'shift': 'shift',
+                    'win': 'command' if pyautogui.platform == 'darwin' else 'win',
+                    'cmd': 'command' if pyautogui.platform == 'darwin' else 'win',
+                    'enter': 'enter', 'return': 'enter',
+                    'esc': 'esc', 'escape': 'esc',
+                    'tab': 'tab', 'space': 'space',
+                }
+                
+                mapped_keys = [key_map.get(k.lower(), k) for k in keys]
+                pyautogui.hotkey(*mapped_keys)
+                self.history_popup.add_message(f"✅ Executed {shortcut} - {description}", "ai")
+                
+            elif action == 'type':
+                # Type text into current field
+                logger.info(f"Typing: {text_input}")
+                pyautogui.write(text_input, interval=0.05)
+                self.history_popup.add_message(f"✅ Typed '{text_input}' - {description}", "ai")
+                
+            elif action == 'open_app':
+                # Open an application
+                app_name = text_input.strip()
+                logger.info(f"Opening app: {app_name}")
+                
+                # Try to open using OS-specific methods
+                import platform
+                import subprocess
+                
+                system = platform.system()
+                if system == 'Windows':
+                    # Windows: use os.startfile or subprocess
+                    try:
+                        import os
+                        os.startfile(app_name)
+                    except Exception:
+                        subprocess.Popen(['start', app_name], shell=True)
+                elif system == 'Darwin':
+                    # macOS: use open -a
+                    subprocess.Popen(['open', '-a', app_name])
+                else:
+                    # Linux: try common launchers
+                    subprocess.Popen([app_name], shell=True)
+                    
+                self.history_popup.add_message(f"✅ Opening '{app_name}'... - {description}", "ai")
+                time.sleep(2)  # Wait for app to start
+                
+            elif action == 'wait':
+                # Wait for specified seconds
+                seconds = int(text_input.strip()) if text_input.strip().isdigit() else 2
+                logger.info(f"Waiting for {seconds} seconds")
+                time.sleep(seconds)
+                self.history_popup.add_message(f"⏳ Waited {seconds}s - {description}", "ai")
+                
+            elif action == 'scroll':
+                # Scroll up or down
+                direction = text_input.strip().lower()
+                amount = 300 if direction == 'up' else -300
+                logger.info(f"Scrolling {direction}")
+                pyautogui.scroll(amount)
+                self.history_popup.add_message(f"✅ Scrolled {direction} - {description}", "ai")
+                
+            else:
+                logger.warning(f"Unknown direct action: {action}")
+                self.history_popup.add_message(f"⚠️ Unknown action: {action}", "ai")
+                
+        except Exception as e:
+            error_msg = f"Direct action '{action}' failed: {str(e)}"
+            logger.error(f"Direct action error: {error_msg}", exc_info=True)
             self.history_popup.add_message(f"❌ {error_msg}", "ai")

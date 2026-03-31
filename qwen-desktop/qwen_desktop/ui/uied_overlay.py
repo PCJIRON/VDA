@@ -23,11 +23,12 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QRect, QPoint, pyqtSignal, QSize
 from PyQt6.QtGui import (
     QColor, QPainter, QPen, QBrush, QFont, QCursor, QKeyEvent, QMouseEvent,
-    QPaintEvent, QResizeEvent
+    QPaintEvent, QResizeEvent, QIcon
 )
 
 from typing import List, Dict, Optional, Tuple
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -215,83 +216,173 @@ class DraggableToolbar(QWidget):
     
     def _setup_ui(self):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(8)
-        
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Main container with gradient purple background
         container = QFrame()
         container.setStyleSheet("""
             QFrame {
-                background-color: rgba(31, 41, 55, 240);
-                border-radius: 16px;
-                border: 2px solid #6366f1;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #8B5CF6, stop:0.5 #6366F1, stop:1 #3B82F6);
+                border-radius: 26px;
             }
         """)
         container_layout = QHBoxLayout(container)
-        container_layout.setContentsMargins(12, 8, 12, 8)
+        container_layout.setContentsMargins(10, 8, 10, 8)
         container_layout.setSpacing(6)
-        
-        self.move_btn = ToolButton("🖱️", "Move Tool", "V")
+
+        # Circular button for Move tool (white background when selected)
+        self.move_btn = QToolButton()
+        self.move_btn.setToolTip("Move Tool (V)")
+        self.move_btn.setFixedSize(42, 42)
+        self.move_btn.setStyleSheet("""
+            QToolButton {
+                background-color: white;
+                border: none;
+                border-radius: 21px;
+            }
+            QToolButton:hover {
+                background-color: #F3F4F6;
+            }
+        """)
+        # Load SVG icon
+        move_icon_path = os.path.join(os.path.dirname(__file__), '..', 'resources', 'icons', 'move.svg')
+        if os.path.exists(move_icon_path):
+            self.move_btn.setIcon(QIcon(move_icon_path))
+            self.move_btn.setIconSize(QSize(22, 22))
+        else:
+            self.move_btn.setText("➤")
         self.move_btn.setCheckable(True)
         self.move_btn.setChecked(True)
         self.move_btn.clicked.connect(lambda: self._on_tool_clicked('move'))
         container_layout.addWidget(self.move_btn)
-        
-        self.box_btn = ToolButton("⬜", "Box Tool", "B")
+
+        # Separator
+        separator1 = QFrame()
+        separator1.setFrameShape(QFrame.Shape.VLine)
+        separator1.setStyleSheet("background-color: rgba(255,255,255,0.4);")
+        separator1.setFixedWidth(1)
+        container_layout.addWidget(separator1)
+
+        # Box tool icon
+        self.box_btn = QToolButton()
+        self.box_btn.setToolTip("Box Tool (B)")
+        self.box_btn.setFixedSize(38, 38)
+        self.box_btn.setStyleSheet("""
+            QToolButton {
+                background-color: transparent;
+                border: none;
+                border-radius: 6px;
+            }
+            QToolButton:hover {
+                background-color: rgba(255,255,255,0.15);
+            }
+            QToolButton:checked {
+                background-color: white;
+            }
+        """)
+        # Load SVG icon
+        box_icon_path = os.path.join(os.path.dirname(__file__), '..', 'resources', 'icons', 'box.svg')
+        if os.path.exists(box_icon_path):
+            self.box_btn.setIcon(QIcon(box_icon_path))
+            self.box_btn.setIconSize(QSize(20, 20))
+        else:
+            self.box_btn.setText("⬜")
         self.box_btn.setCheckable(True)
         self.box_btn.clicked.connect(lambda: self._on_tool_clicked('box'))
         container_layout.addWidget(self.box_btn)
-        
-        self.delete_btn = ToolButton("🗑️", "Delete Tool", "D")
+
+        # Delete tool icon
+        self.delete_btn = QToolButton()
+        self.delete_btn.setToolTip("Delete Tool (D)")
+        self.delete_btn.setFixedSize(38, 38)
+        self.delete_btn.setStyleSheet("""
+            QToolButton {
+                background-color: transparent;
+                border: none;
+                border-radius: 6px;
+            }
+            QToolButton:hover {
+                background-color: rgba(255,255,255,0.15);
+            }
+            QToolButton:checked {
+                background-color: white;
+            }
+        """)
+        # Load SVG icon
+        delete_icon_path = os.path.join(os.path.dirname(__file__), '..', 'resources', 'icons', 'delete.svg')
+        if os.path.exists(delete_icon_path):
+            self.delete_btn.setIcon(QIcon(delete_icon_path))
+            self.delete_btn.setIconSize(QSize(20, 20))
+        else:
+            self.delete_btn.setText("🗑")
         self.delete_btn.setCheckable(True)
         self.delete_btn.clicked.connect(lambda: self._on_tool_clicked('delete'))
         container_layout.addWidget(self.delete_btn)
-        
-        separator = QFrame()
-        separator.setFrameShape(QFrame.Shape.VLine)
-        separator.setStyleSheet("background-color: #4b5563;")
-        separator.setFixedWidth(2)
-        container_layout.addWidget(separator)
-        
-        self.done_btn = QPushButton("✅ Done")
-        self.done_btn.setFixedSize(100, 45)
+
+        # Separator before Done
+        separator2 = QFrame()
+        separator2.setFrameShape(QFrame.Shape.VLine)
+        separator2.setStyleSheet("background-color: rgba(255,255,255,0.4);")
+        separator2.setFixedWidth(1)
+        container_layout.addWidget(separator2)
+
+        # Done button (rounded, lighter purple)
+        self.done_btn = QPushButton("✓  Done")
+        self.done_btn.setFixedSize(110, 38)
         self.done_btn.setStyleSheet("""
             QPushButton {
-                background-color: #16a34a;
+                background-color: rgba(255,255,255,0.25);
                 color: white;
                 border: none;
-                border-radius: 8px;
-                font-weight: bold;
+                border-radius: 19px;
+                font-weight: 600;
                 font-size: 14px;
+                padding: 0px 18px;
             }
-            QPushButton:hover { background-color: #15803d; }
+            QPushButton:hover {
+                background-color: rgba(255,255,255,0.35);
+            }
         """)
         self.done_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.done_btn.clicked.connect(self._on_done_clicked)
         container_layout.addWidget(self.done_btn)
-        
-        self.exit_btn = QPushButton("✕ Exit")
-        self.exit_btn.setFixedSize(100, 45)
+
+        # Exit button (X icon)
+        self.exit_btn = QToolButton()
+        self.exit_btn.setToolTip("Exit (Esc)")
+        self.exit_btn.setFixedSize(34, 34)
         self.exit_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #dc2626;
-                color: white;
+            QToolButton {
+                background-color: transparent;
                 border: none;
-                border-radius: 8px;
-                font-weight: bold;
-                font-size: 14px;
+                border-radius: 6px;
             }
-            QPushButton:hover { background-color: #b91c1c; }
+            QToolButton:hover {
+                background-color: rgba(255,255,255,0.15);
+            }
         """)
-        self.exit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Load SVG icon
+        exit_icon_path = os.path.join(os.path.dirname(__file__), '..', 'resources', 'icons', 'exit.svg')
+        if os.path.exists(exit_icon_path):
+            self.exit_btn.setIcon(QIcon(exit_icon_path))
+            self.exit_btn.setIconSize(QSize(18, 18))
+        else:
+            self.exit_btn.setText("✕")
         self.exit_btn.clicked.connect(self._on_exit_clicked)
         container_layout.addWidget(self.exit_btn)
-        
+
         layout.addWidget(container)
-        
+
+        # Set fixed size for toolbar
+        self.setFixedSize(290, 54)
+
+        # Add enhanced shadow effect
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(30)
-        shadow.setColor(QColor(0, 0, 0, 100))
-        shadow.setOffset(0, 5)
+        shadow.setBlurRadius(25)
+        shadow.setColor(QColor(139, 92, 246, 100))  # Purple tinted shadow
+        shadow.setOffset(0, 6)
         container.setGraphicsEffect(shadow)
     
     def _on_done_clicked(self):
@@ -309,10 +400,23 @@ class DraggableToolbar(QWidget):
         self.exit_clicked.emit()
     
     def _on_tool_clicked(self, tool: str):
+        """Handle tool selection - only selected tool has white background."""
         self.current_tool = tool
-        self.move_btn.setChecked(tool == 'move')
-        self.box_btn.setChecked(tool == 'box')
-        self.delete_btn.setChecked(tool == 'delete')
+        
+        # Move button - white background only when checked
+        if tool == 'move':
+            self.move_btn.setChecked(True)
+            self.box_btn.setChecked(False)
+            self.delete_btn.setChecked(False)
+        elif tool == 'box':
+            self.move_btn.setChecked(False)
+            self.box_btn.setChecked(True)
+            self.delete_btn.setChecked(False)
+        elif tool == 'delete':
+            self.move_btn.setChecked(False)
+            self.box_btn.setChecked(False)
+            self.delete_btn.setChecked(True)
+        
         self.tool_changed.emit(tool)
     
     def mousePressEvent(self, event: QMouseEvent):
@@ -570,49 +674,12 @@ class UIEDOverlayWidget(QWidget):
             painter.setBrush(QBrush(QColor(0, 255, 0, 30)))
             painter.setPen(QPen(QColor("#00ff00"), 3))
             painter.drawRect(self.resize_start_rect)
-    
+
     def _draw_instructions(self, painter: QPainter):
-        """Draw instruction panel."""
-        instructions = [
-            f"🛠️ Tool: {self.current_tool.upper()}",
-            "🖱️ Drag: Move box",
-            "🔲 Drag corner: Resize",
-            "✏️ Double-click: Edit label",
-            "🗑️ Right-click: Delete",
-            f"📦 Components: {len(self.components)}"
-        ]
-        
-        panel_width = 280
-        panel_height = 25 + 28 * len(instructions)
-        panel_rect = QRect(
-            self.width() - panel_width - 20,
-            20,
-            panel_width,
-            panel_height
-        )
-        
-        painter.setBrush(QBrush(QColor(31, 41, 55, 230)))
-        painter.setPen(QPen(QColor(99, 102, 241), 2))
-        painter.drawRoundedRect(panel_rect, 12, 12)
-        
-        painter.setPen(QColor("#ffffff"))
-        painter.setFont(QFont("Segoe UI", 11))
-        
-        for i, instruction in enumerate(instructions):
-            y = 35 + i * 28
-            if i == 0:
-                painter.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-                painter.setPen(QColor("#6366f1"))
-            else:
-                painter.setFont(QFont("Segoe UI", 10))
-                painter.setPen(QColor("#e5e7eb"))
-            
-            painter.drawText(
-                QRect(panel_rect.x() + 15, panel_rect.y() + y - 10, panel_rect.width() - 30, 25),
-                Qt.AlignmentFlag.AlignLeft,
-                instruction
-            )
-    
+        """Removed instruction panel for cleaner UI."""
+        # Guide window removed - cleaner, more intuitive UI
+        pass
+
     def _get_resize_handle_at(self, pos: QPoint, rect: QRect) -> int:
         """Get resize handle index at position (0-7, or -1 if none)."""
         handle_size = self.RESIZE_HANDLE_SIZE
