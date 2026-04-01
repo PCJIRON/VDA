@@ -172,12 +172,15 @@ class APIClient:
             )
         
         try:
-            # Get model from settings
+            # Get model from settings UI
             model = self.settings.get("api_model", "qwen-coder-plus")
             
-            # Qwen OAuth endpoints require the specific 'coder-model' identifier
+            # Note: Previously OAuth endpoints forced 'coder-model'.
+            # We now allow the user's chosen UI model (qwen-coder-plus, qwen-max, etc)
+            # to pass through dynamically.
             if self.oauth_handler and self.oauth_handler.is_authenticated() and self.client.base_url:
-                if "qwen.ai" in str(self.client.base_url):
+                if "qwen.ai" in str(self.client.base_url) and model == "qwen-coder-plus":
+                    # qwen.ai free API usually maps this specifically
                     model = "coder-model"
                     
             logger.info(f"Using model: {model}")

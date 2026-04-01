@@ -33,11 +33,11 @@ class BaseButton(QPushButton):
             # Stop button: Solid red background
             bg_color = QColor("#ef4444") if not self._hovered else QColor("#dc2626")
         elif self.is_green:
-            bg_color = QColor("#16a34a") if not self._hovered else QColor("#15803d")
+            bg_color = QColor("#10b981") if not self._hovered else QColor("#059669")
         elif self.is_primary:
-            bg_color = QColor(255, 255, 255, 50) if not self._hovered else QColor(255, 255, 255, 80)
+            bg_color = QColor(0, 0, 0, 80) if not self._hovered else QColor(0, 0, 0, 110)
         else:
-            bg_color = QColor(255, 255, 255, 40) if not self._hovered else QColor(255, 255, 255, 70)
+            bg_color = QColor(0, 0, 0, 40) if not self._hovered else QColor(0, 0, 0, 70)
 
         painter.setBrush(QBrush(bg_color))
         painter.setPen(Qt.PenStyle.NoPen)

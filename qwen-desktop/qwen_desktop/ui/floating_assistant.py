@@ -26,6 +26,7 @@ import numpy as np
 from qwen_desktop.core.qwen_session_service import QwenSessionService
 from qwen_desktop.core.vision_capture import VisionCaptureService
 from qwen_desktop.core.pyautogui_executor import PyAutoGUIExecutor
+from qwen_desktop.core.voice_service import VoiceService
 import uuid
 
 # Try importing UI Automation (Windows only)
@@ -37,9 +38,13 @@ except ImportError:
     UI_AUTOMATION_AVAILABLE = False
     logging.warning("[UIA] UI Automation not available (Windows only)")
 
+from qwen_desktop.ui.components.model_selector import ModelSelector
+from qwen_desktop.ui.components.mic_button import MicButton
 from qwen_desktop.ui.components.vision_button import VisionButton
 from qwen_desktop.ui.components.attach_button import AttachButton
 from qwen_desktop.ui.components.send_button import SendButton
+from qwen_desktop.ui.components.settings_button import SettingsButton
+from qwen_desktop.ui.components.uied_button import UIEDButton
 from qwen_desktop.ui.components.settings_button import SettingsButton
 from qwen_desktop.ui.components.uied_button import UIEDButton, UIEDResultsPanel
 from qwen_desktop.ui.uied_overlay import UIEDOverlayWidget
@@ -211,8 +216,8 @@ class ChatHistoryPopup(QWidget):
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(16, 12, 16, 12)
         
-        title = QLabel("✨ Chat History")
-        title.setStyleSheet("color: white; font-weight: bold; background: transparent;")
+        title = QLabel("✨ Welcome to Qwen")
+        title.setStyleSheet("color: white; font-weight: bold; background: transparent; font-size: 11px;")
         h_layout.addWidget(title)
 
         # Vision status label (hidden by default)
@@ -404,7 +409,7 @@ class FloatingAssistant(QWidget):
         self._press_position = QPoint()
 
         self.collapsed_size = 70
-        self.expanded_size = 450
+        self.expanded_size = 750
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
@@ -431,6 +436,9 @@ class FloatingAssistant(QWidget):
         self.session_service = QwenSessionService(self.settings.get("cwd", ""))
 
         # Force a NEW session explicitly on each boot
+        self.voice_service = VoiceService()
+        self.is_voice_recording = False
+        if hasattr(self.mic_btn, 'set_recording_state'): self.mic_btn.set_recording_state(False)
         self.session_id = str(uuid.uuid4())
         self._chat_history = []
         self.last_msg_uuid = None
@@ -548,64 +556,104 @@ class FloatingAssistant(QWidget):
 
     def _setup_ui(self):
         self.main_layout = QHBoxLayout(self)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setContentsMargins(0, 0, 4, 0)
         self.main_layout.setSpacing(0)
-        
-        # Transparent Input Area wrapper
+
         self.input_wrapper = QWidget()
         self.input_layout = QHBoxLayout(self.input_wrapper)
-        self.input_layout.setContentsMargins(15, 0, 10, 0)
-        
+        self.input_layout.setContentsMargins(10, 8, 10, 8)
+        self.input_layout.setSpacing(8)
+
+        # 1. SETTINGS BUTTON BLOCK
+        self.settings_btn = SettingsButton()
+        self.settings_btn.clicked.connect(self.show_settings_dialog)
+        self.settings_btn.setFixedSize(40, 40)
+        try:
+            self.settings_btn.setStyleSheet("QToolButton { background-color: rgba(255, 255, 255, 0.15); border-radius: 12px; } QToolButton:hover { background-color: rgba(255, 255, 255, 0.25); }")
+        except: pass
+        self.input_layout.addWidget(self.settings_btn)
+
+        # 2. TEXT CONTAINER PILL (Model, Separator, Input, Mic)
+        self.text_container = QWidget()
+        self.text_container.setObjectName("TextContainer")
+        self.text_container.setStyleSheet("QWidget#TextContainer { background-color: rgba(255, 255, 255, 0.12); border-radius: 14px; }")
+        self.text_layout = QHBoxLayout(self.text_container)
+        self.text_layout.setContentsMargins(12, 0, 8, 0)
+        self.text_layout.setSpacing(6)
+        self.text_container.setFixedHeight(40)
+
+        try:
+            self.model_selector = ModelSelector(self.settings, self)
+            self.model_selector.setStyleSheet("QPushButton { background: transparent; color: rgba(255, 255, 255, 0.9); font-size: 11px; font-weight: bold; border: none; } QPushButton:hover { color: white; }")
+            self.text_layout.addWidget(self.model_selector)
+        except Exception:
+            pass
+
+        separ_label = QLabel("|")
+        separ_label.setStyleSheet("color: rgba(255, 255, 255, 0.3); font-size: 16px; background: transparent;")
+        self.text_layout.addWidget(separ_label)
+
         self.input_field = QLineEdit()
-        self.input_field.setPlaceholderText("Ask Qwen AI...")
-        self.input_field.setStyleSheet("""
-            QLineEdit {
-                background-color: rgba(255, 255, 255, 0.2);
-                color: white;
-                border: none;
-                border-radius: 8px;
-                padding: 8px 12px;
-                font-size: 14px;
-            }
-        """)
+        self.input_field.setPlaceholderText("Message...")
+        self.input_field.setStyleSheet("QLineEdit { background-color: transparent; color: rgba(255, 255, 255, 0.9); border: none; font-size: 14px; } QLineEdit:focus { color: white; }")
         self.input_field.returnPressed.connect(self.submit_message)
+        self.text_layout.addWidget(self.input_field, 1)
 
-        self.send_btn = SendButton()
-        self.send_btn.clicked.connect(self.submit_message)
-        # _is_sending tracks whether we're mid-API call (send → stop mode)
-        self._is_sending = False
+        self.mic_btn = MicButton()
+        self.mic_btn.setFixedSize(36, 36)
+        self.mic_btn.clicked.connect(self.toggle_voice)
+        try:
+            self.mic_btn.setStyleSheet("QToolButton { background: transparent; border: none; } QToolButton:hover { background-color: rgba(255, 255, 255, 0.1); border-radius: 18px; }")
+        except: pass
+        self.text_layout.addWidget(self.mic_btn)
 
+        self.input_layout.addWidget(self.text_container, 1)
+
+        # BUTTON STYLESHEET HELPER
+        btn_style = "QToolButton { background-color: rgba(255, 255, 255, 0.15); border-radius: 12px; } QToolButton:hover { background-color: rgba(255, 255, 255, 0.25); }"
+
+        # 3. VISION BUTTON BLOCK (EYE SLASH)
         self.vision_btn = VisionButton()
         self.vision_btn.clicked.connect(self.toggle_vision)
+        self.vision_btn.setFixedSize(40, 40)
+        try: self.vision_btn.setStyleSheet(btn_style)
+        except: pass
+        self.input_layout.addWidget(self.vision_btn)
 
+        # 4. ATTACH BUTTON BLOCK (PAPERCLIP)
         self.attach_btn = AttachButton()
         self.attach_btn.clicked.connect(self.select_files)
+        self.attach_btn.setFixedSize(40, 40)
+        try: self.attach_btn.setStyleSheet(btn_style)
+        except: pass
+        self.input_layout.addWidget(self.attach_btn)
 
-        self.settings_btn = SettingsButton()
-        self.settings_btn.clicked.connect(self.toggle_auth)
+        # 5. SEND BUTTON BLOCK (PAPER PLANE)
+        self.send_btn = SendButton()
+        self.send_btn.clicked.connect(self.submit_message)
+        self.send_btn.setFixedSize(40, 40)
+        self._is_sending = False
+        try: self.send_btn.setStyleSheet(btn_style)
+        except: pass
+        self.input_layout.addWidget(self.send_btn)
 
-        # ── NEW: UIED Button for UI Element Detection ──
+        # EXTRA: UIED BUTTON BLOCK (If needed by user)
         self.uied_btn = UIEDButton()
         self.uied_btn.clicked.connect(self.trigger_uied_detection)
-
-        # Layout: [settings] [input] [send/stop] [vision] [uied] [attach]
-        self.input_layout.addWidget(self.settings_btn)
-        self.input_layout.addWidget(self.input_field, 1)
-        self.input_layout.addWidget(self.send_btn)   # right next to input
-        self.input_layout.addWidget(self.vision_btn)
+        self.uied_btn.setFixedSize(40, 40)
+        try: self.uied_btn.setStyleSheet(btn_style)
+        except: pass
         self.input_layout.addWidget(self.uied_btn)
-        self.input_layout.addWidget(self.attach_btn)
-        
+
         self.input_wrapper.setFixedWidth(self.expanded_size - self.collapsed_size)
         self.input_wrapper.hide()
-        
-        # Sparkle Button wrapper
+
         self.sparkle_wrapper = QWidget()
         self.sparkle_wrapper.setFixedSize(self.collapsed_size, self.collapsed_size)
-        
+
         self.main_layout.addWidget(self.input_wrapper)
         self.main_layout.addWidget(self.sparkle_wrapper)
-        
+
     def _setup_context_menu(self):
         self.context_menu = QMenu(self)
         self.context_menu.setStyleSheet("""
@@ -795,6 +843,20 @@ class FloatingAssistant(QWidget):
         for msg in self._chat_history:
             self.history_popup.add_message(msg["content"], "user" if msg["role"] == "user" else "ai")
 
+    def show_settings_dialog(self):
+        try:
+            from qwen_desktop.ui.settings_dialog import SettingsDialog
+            if not hasattr(self, 'settings_dialog'):
+                self.settings_dialog = SettingsDialog(self)
+                if hasattr(self, 'oauth') and self.oauth:
+                    self.settings_dialog.login_btn.clicked.connect(self.trigger_login)
+                    self.settings_dialog.logout_btn.clicked.connect(self.oauth.logout)
+            self.settings_dialog.show()
+            self.settings_dialog.raise_()
+            self.settings_dialog.activateWindow()
+        except Exception as e:
+            print(f"Error opening settings dialog: {e}")
+
     def toggle_auth(self):
         if not self.oauth: 
             self.trigger_login()
@@ -833,6 +895,44 @@ class FloatingAssistant(QWidget):
         if self.api_client:
             self.history_popup.add_message("Login successful! ✨", "ai")
             
+    def toggle_voice(self):
+        if not self.is_voice_recording:
+            try:
+                success = self.voice_service.start_recording()
+                if success:
+                    self.is_voice_recording = True
+                    if hasattr(self.mic_btn, 'set_recording_state'): self.mic_btn.set_recording_state(True)
+                    self.mic_btn.setStyleSheet("QToolButton { background-color: #ef4444; border-radius: 18px; border: none; color: white; padding: 0px; margin: 0px; }")
+                    recorder = self.voice_service.get_recorder()
+                    if recorder:
+                        try: recorder.transcription_ready.disconnect()
+                        except: pass
+                        try: recorder.error_occurred.disconnect()
+                        except: pass
+                        recorder.transcription_ready.connect(self._on_voice_transcribed)
+                        recorder.error_occurred.connect(self._on_voice_error)
+                else:
+                    self.history_popup.add_message("Could not access microphone.", "ai")
+            except Exception as e:
+                logger.error(f"Voice err: {e}")
+        else:
+            self._stop_voice()
+
+    def _stop_voice(self):
+        self.is_voice_recording = False
+        if hasattr(self.mic_btn, 'set_recording_state'): self.mic_btn.set_recording_state(False)
+        self.voice_service.stop_recording()
+        self.mic_btn.setStyleSheet("QToolButton { background: transparent; border: none; } QToolButton:hover { background-color: rgba(255, 255, 255, 0.1); border-radius: 18px; }")
+
+    def _on_voice_transcribed(self, text):
+        current_text = self.input_field.text()
+        space = " " if current_text else ""
+        self.input_field.setText(f"{current_text}{space}{text}".strip())
+
+    def _on_voice_error(self, err):
+        self._stop_voice()
+        self.history_popup.add_message(f"Voice Error: {err}", "ai")
+
     def toggle_vision(self):
         """Toggle vision mode on/off."""
         self.is_vision_enabled = not self.is_vision_enabled
