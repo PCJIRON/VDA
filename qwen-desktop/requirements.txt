@@ -25,3 +25,7 @@ uiautomation>=2.0.18  # Windows UI Automation (100% accurate)
 
 # OCR for text detection
 easyocr>=1.7.0  # Text detection with coordinates
+
+# Voice Input
+SpeechRecognition>=3.10.0  # Speech-to-text
+PyAudio>=0.2.14  # Audio capture

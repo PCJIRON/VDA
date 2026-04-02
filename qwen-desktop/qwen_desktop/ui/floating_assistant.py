@@ -7,7 +7,7 @@ PyAutoGUI desktop automation via [PYAUTOGUI]...[/PYAUTOGUI] blocks.
 from PyQt6.QtWidgets import (
     QWidget, QLineEdit, QHBoxLayout, QPushButton, QLabel, QVBoxLayout, QScrollArea,
     QApplication, QGraphicsDropShadowEffect, QFrame, QMenu, QFileDialog, QSizePolicy,
-    QTextEdit
+    QTextEdit, QDialog
 )
 from PyQt6.QtCore import (
     Qt, QPropertyAnimation, QRect, QPoint, QEasingCurve, pyqtSignal,
@@ -26,6 +26,7 @@ import numpy as np
 from qwen_desktop.core.qwen_session_service import QwenSessionService
 from qwen_desktop.core.vision_capture import VisionCaptureService
 from qwen_desktop.core.pyautogui_executor import PyAutoGUIExecutor
+from qwen_desktop.core.shell_tool import ShellTool, PermissionMode
 import uuid
 
 # Try importing UI Automation (Windows only)
@@ -41,8 +42,11 @@ from qwen_desktop.ui.components.vision_button import VisionButton
 from qwen_desktop.ui.components.attach_button import AttachButton
 from qwen_desktop.ui.components.send_button import SendButton
 from qwen_desktop.ui.components.settings_button import SettingsButton
+from qwen_desktop.ui.components.mic_button import MicButton
 from qwen_desktop.ui.components.uied_button import UIEDButton, UIEDResultsPanel
 from qwen_desktop.ui.uied_overlay import UIEDOverlayWidget
+from qwen_desktop.core.voice_service import VoiceService
+from qwen_desktop.ui.settings_dialog import SettingsDialog
 
 logger = logging.getLogger(__name__)
 
@@ -446,6 +450,16 @@ class FloatingAssistant(QWidget):
         # PyAutoGUI executor
         self._pyautogui_executor = PyAutoGUIExecutor(mode=self._pyautogui_mode)
 
+        # Shell tool with permission modes
+        self._shell_tool = ShellTool(mode=PermissionMode.ASK_FIRST)
+        self._pending_shell_command = None
+
+        # Voice service - speech to text
+        self._voice_service = VoiceService(self)
+        self._voice_service.text_recognized.connect(self._on_voice_text_recognized)
+        self._voice_service.error_occurred.connect(self._on_voice_error)
+        self._voice_service.state_changed.connect(self._on_voice_state_changed)
+
         # ── NEW: Template Cache for Hybrid Auto-Caching ──
         # Stores: {"target_name": numpy_gray_image}
         # First time: VLM → Auto-crop → Save
@@ -588,10 +602,15 @@ class FloatingAssistant(QWidget):
         self.uied_btn = UIEDButton()
         self.uied_btn.clicked.connect(self.trigger_uied_detection)
 
-        # Layout: [settings] [input] [send/stop] [vision] [uied] [attach]
+        # ── NEW: Mic Button for Voice Input ──
+        self.mic_btn = MicButton()
+        self.mic_btn.clicked.connect(self.toggle_voice_input)
+
+        # Layout: [settings] [input] [send/stop] [mic] [vision] [uied] [attach]
         self.input_layout.addWidget(self.settings_btn)
         self.input_layout.addWidget(self.input_field, 1)
         self.input_layout.addWidget(self.send_btn)   # right next to input
+        self.input_layout.addWidget(self.mic_btn)
         self.input_layout.addWidget(self.vision_btn)
         self.input_layout.addWidget(self.uied_btn)
         self.input_layout.addWidget(self.attach_btn)
@@ -796,16 +815,38 @@ class FloatingAssistant(QWidget):
             self.history_popup.add_message(msg["content"], "user" if msg["role"] == "user" else "ai")
 
     def toggle_auth(self):
-        if not self.oauth: 
-            self.trigger_login()
-            return
-            
-        if self.oauth.is_authenticated():
+        """Open modern settings dialog."""
+        self.settings_dialog = SettingsDialog(self.settings, self)
+        self.settings_dialog.login_requested.connect(self._settings_login_requested)
+        self.settings_dialog.logout_requested.connect(self._settings_logout_requested)
+        self.settings_dialog.exec()
+        self._check_auth()
+        if self.oauth and self.oauth.is_authenticated():
+            self.settings_dialog._update_auth_status(True, self._get_user_email())
+
+    def _settings_login_requested(self):
+        """Handle login request from settings dialog."""
+        self.settings_dialog.accept()
+        self.trigger_login()
+
+    def _settings_logout_requested(self):
+        """Handle logout request from settings dialog."""
+        if self.oauth:
             self.oauth.logout()
-            self._check_auth() # Reset
+            self._check_auth()
             self.history_popup.add_message("Logged out successfully.", "ai")
-        else:
-            self.trigger_login()
+
+    def _get_user_email(self) -> str:
+        """Get user email from OAuth credentials."""
+        try:
+            from qwen_desktop.auth.credentials import Credentials
+            creds = Credentials()
+            token_data = creds.load_credentials()
+            if token_data:
+                return token_data.get("email", "Unknown")
+        except Exception:
+            pass
+        return "Unknown"
 
     def _check_auth(self):
         self.oauth = None
@@ -851,6 +892,135 @@ class FloatingAssistant(QWidget):
             self._update_vision_status_bar()
 
         self.update()
+
+    def toggle_voice_input(self):
+        """Toggle voice input on/off. Mic button stays on until user clicks again."""
+        if not self._voice_service.is_available():
+            self.history_popup.add_message(
+                "⚠️ Voice input requires SpeechRecognition and PyAudio.\n"
+                "Run: pip install SpeechRecognition PyAudio",
+                "ai"
+            )
+            return
+
+        is_listening = self._voice_service.toggle()
+        self.mic_btn.toggle_recording()
+
+        if is_listening:
+            self.input_field.setPlaceholderText("🎤 Listening... Speak now")
+            self.history_popup.add_message(
+                "🎤 Voice input ON\nSpeak clearly. Click the mic button again to stop.",
+                "ai"
+            )
+        else:
+            self.input_field.setPlaceholderText("Ask Qwen AI...")
+            self.history_popup.add_message("🎤 Voice input OFF", "ai")
+
+    def _speak_hindi(self, text: str):
+        """Speak text in Hindi using Windows TTS. Cleans markdown/JSON first."""
+        try:
+            import threading
+            import re
+
+            def _clean_text(text: str) -> str:
+                """Remove markdown, JSON, code blocks, emojis for clean speech."""
+                text = re.sub(r'```[\s\S]*?```', '', text)
+                text = re.sub(r'`[^`]+`', '', text)
+                text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+                text = re.sub(r'[*_#~>]', '', text)
+                text = re.sub(r'\{[^}]*\}', '', text)
+                text = re.sub(r'\n{2,}', '. ', text)
+                text = re.sub(r'\n', ' ', text)
+                text = re.sub(r'\s+', ' ', text).strip()
+                text = re.sub(r'[^\w\s.,!?;:()\'"-]', '', text)
+                return text[:500]
+
+            def _speak():
+                try:
+                    clean = _clean_text(text)
+                    if not clean:
+                        return
+                    import win32com.client
+                    speaker = win32com.client.Dispatch("SAPI.SpVoice")
+                    for voice in speaker.GetVoices():
+                        desc = voice.GetDescription().lower()
+                        vid = voice.Id.lower()
+                        if "hindi" in desc or "hi-in" in vid:
+                            speaker.Voice = voice
+                            break
+                    speaker.Rate = 0
+                    speaker.Volume = 100
+                    speaker.Speak(clean)
+                except ImportError:
+                    try:
+                        import pyttsx3
+                        clean = _clean_text(text)
+                        if not clean:
+                            return
+                        engine = pyttsx3.init()
+                        engine.setProperty('rate', 150)
+                        engine.setProperty('volume', 1.0)
+                        engine.say(clean)
+                        engine.runAndWait()
+                    except ImportError:
+                        pass
+            t = threading.Thread(target=_speak, daemon=True)
+            t.start()
+        except Exception as e:
+            logger.debug(f"TTS failed: {e}")
+
+    def _on_voice_text_recognized(self, text: str):
+        """Handle recognized speech - auto send to Qwen."""
+        if not text.strip():
+            return
+
+        # Prevent double sending with debounce lock
+        if getattr(self, '_voice_sending_lock', False):
+            return
+        self._voice_sending_lock = True
+
+        logger.info(f"Voice recognized: {text}")
+
+        # Show recognized text in chat
+        self.history_popup.add_message(f"🎤 {text}", "user")
+
+        # Expand popup if collapsed
+        if not self.is_expanded:
+            self.toggle_expand()
+
+        # Send to Qwen API
+        if self.oauth and self.oauth.is_authenticated() and getattr(self, "api_client", None):
+            self.last_msg_uuid = self.session_service.save_message(
+                self.session_id, "user", text, parent_uuid=self.last_msg_uuid
+            )
+            self._handle_api(text, [])
+        else:
+            QTimer.singleShot(
+                400, lambda: self.history_popup.add_message("Please login first.", "ai")
+            )
+
+        # Release lock after delay
+        QTimer.singleShot(3000, self._release_voice_lock)
+
+    def _release_voice_lock(self):
+        """Release the voice sending lock."""
+        self._voice_sending_lock = False
+
+    def _on_voice_error(self, error: str):
+        """Handle voice service errors."""
+        logger.error(f"Voice error: {error}")
+        self.history_popup.add_message(f"⚠️ Voice error: {error}", "ai")
+        # Reset mic button state
+        if self.mic_btn.is_recording:
+            self.mic_btn.toggle_recording()
+        self.input_field.setPlaceholderText("Ask Qwen AI...")
+
+    def _on_voice_state_changed(self, is_listening: bool):
+        """Handle voice service state changes."""
+        if not is_listening and self.mic_btn.is_recording:
+            self.mic_btn.is_recording = False
+            self.mic_btn.is_green = False
+            self.mic_btn.update()
 
     def _delayed_vision_start(self):
         """Start the pynput listeners after the toggle-click delay has passed."""
@@ -1249,6 +1419,20 @@ Be PRECISE - center of element. Example:
             self.session_id, "assistant", full_text, parent_uuid=self.last_msg_uuid
         )
         self._chat_history.append({"role": "assistant", "content": full_text})
+
+        # If mic is still on, speak Qwen's response in Hindi
+        if self._voice_service.is_listening:
+            self._speak_hindi(full_text)
+
+        # ── SHELL COMMAND EXECUTION ──────────────────────────────────────────────
+        # Check if Qwen returned shell commands in [SHELL]...[/SHELL] blocks
+        shell_blocks = re.findall(r'\[SHELL\](.*?)\[/SHELL\]', full_text, re.DOTALL)
+        if shell_blocks:
+            for cmd_block in shell_blocks:
+                cmd = cmd_block.strip()
+                if cmd:
+                    self._handle_shell_command(cmd, full_text)
+                    return  # Wait for shell result before continuing
 
         # NOTE: Qwen Vision can now trigger UIED execution
         # When LLM returns JSON with action + target_name, use UIED template matching
@@ -2645,3 +2829,173 @@ OR if they should abort:
             error_msg = f"Direct action '{action}' failed: {str(e)}"
             logger.error(f"Direct action error: {error_msg}", exc_info=True)
             self.history_popup.add_message(f"❌ {error_msg}", "ai")
+
+    def _handle_shell_command(self, command: str, full_response: str):
+        """Handle shell command from LLM response with permission flow."""
+        if not command.strip():
+            return
+
+        logger.info(f"Shell command detected: {command}")
+
+        if self._shell_tool.needs_permission(command):
+            reason = self._shell_tool.get_permission_reason(command)
+            self._show_shell_permission_dialog(command, reason, full_response)
+        else:
+            self._execute_shell_command(command, full_response)
+
+    def _show_shell_permission_dialog(self, command: str, reason: str, full_response: str):
+        """Show permission dialog for shell command execution."""
+        self.history_popup.add_message(
+            f"⚠️ **Shell Command Permission Required**\n\n"
+            f"**Command:** `{command}`\n"
+            f"**Reason:** {reason}\n\n"
+            f"Choose an action:",
+            "ai"
+        )
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Shell Command Permission")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(500)
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        title = QLabel("⚠️ Execute Shell Command?")
+        title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+        title.setStyleSheet("color: #f59e0b;")
+        layout.addWidget(title)
+
+        cmd_label = QLabel(f"Command:\n{command}")
+        cmd_label.setFont(QFont("Consolas", 12))
+        cmd_label.setStyleSheet("""
+            QLabel {
+                background-color: #0d1117;
+                color: #e6edf3;
+                border: 1px solid #30363d;
+                border-radius: 8px;
+                padding: 12px;
+            }
+        """)
+        cmd_label.setWordWrap(True)
+        layout.addWidget(cmd_label)
+
+        reason_label = QLabel(f"Reason: {reason}")
+        reason_label.setStyleSheet("color: #9ca3af;")
+        layout.addWidget(reason_label)
+
+        btn_layout = QHBoxLayout()
+
+        deny_btn = QPushButton("❌ Deny")
+        deny_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(239, 68, 68, 0.2);
+                color: #f87171;
+                border: 1px solid rgba(239, 68, 68, 0.3);
+                border-radius: 8px;
+                padding: 10px 20px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: rgba(239, 68, 68, 0.3);
+            }
+        """)
+        deny_btn.clicked.connect(lambda: self._on_shell_permission("deny", command, full_response, dialog))
+
+        run_once_btn = QPushButton("▶ Run Once")
+        run_once_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #374151;
+                color: white;
+                border: 1px solid #4b5563;
+                border-radius: 8px;
+                padding: 10px 20px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #4b5563;
+            }
+        """)
+        run_once_btn.clicked.connect(lambda: self._on_shell_permission("allow", command, full_response, dialog))
+
+        allow_all_btn = QPushButton("✅ Allow All (YOLO)")
+        allow_all_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #10b981, stop:1 #059669);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 10px 20px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #059669, stop:1 #047857);
+            }
+        """)
+        allow_all_btn.clicked.connect(lambda: self._on_shell_permission("yolo", command, full_response, dialog))
+
+        btn_layout.addWidget(deny_btn)
+        btn_layout.addWidget(run_once_btn)
+        btn_layout.addWidget(allow_all_btn)
+        layout.addLayout(btn_layout)
+
+        dialog.exec()
+
+    def _on_shell_permission(self, action: str, command: str, full_response: str, dialog):
+        """Handle shell permission choice."""
+        dialog.accept()
+
+        if action == "deny":
+            self.history_popup.add_message(f"❌ Command denied: `{command}`", "ai")
+            self._send_shell_result_to_llm(f"Command denied by user: {command}", full_response)
+        elif action == "allow":
+            self._execute_shell_command(command, full_response)
+        elif action == "yolo":
+            self._shell_tool.set_mode(PermissionMode.YOLO)
+            self.history_popup.add_message("🔓 YOLO mode enabled - all commands auto-approved", "ai")
+            self._execute_shell_command(command, full_response)
+
+    def _execute_shell_command(self, command: str, full_response: str):
+        """Execute shell command and send result back to LLM."""
+        self.history_popup.add_message(f"⚙️ Running: `{command}`", "ai")
+
+        import threading
+        def _run():
+            result = self._shell_tool.execute(command)
+            result_text = self._shell_tool.format_result_for_user(result)
+            llm_text = self._shell_tool.format_result_for_llm(result)
+
+            QTimer.singleShot(0, lambda: self._show_shell_result(result_text, llm_text, full_response))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _show_shell_result(self, user_text: str, llm_text: str, full_response: str):
+        """Show shell result and optionally continue with LLM."""
+        self.history_popup.add_message(user_text, "ai")
+
+        if self._shell_tool.mode == PermissionMode.YOLO:
+            self._send_shell_result_to_llm(llm_text, full_response)
+
+    def _send_shell_result_to_llm(self, result: str, original_response: str):
+        """Send shell result back to LLM for continuation."""
+        continuation_msg = f"The previous command was executed. Here is the result:\n\n{result}\n\nContinue with the next step or provide a summary of what was accomplished."
+
+        self._chat_history.append({"role": "user", "content": result})
+
+        if self.oauth and self.oauth.is_authenticated() and getattr(self, "api_client", None):
+            self._set_stop_mode()
+            self.worker = APIServerWorker(
+                self.api_client,
+                continuation_msg,
+                self._chat_history,
+                vision_mode=self.is_vision_enabled,
+            )
+            self.worker.chunk_received.connect(self._on_api_chunk)
+            self.worker.finished_response.connect(self._on_api_finished)
+            self.worker.error_occurred.connect(self._on_api_error)
+            self.worker.start()
+        else:
+            self.history_popup.add_message("Please login to continue with shell execution.", "ai")
