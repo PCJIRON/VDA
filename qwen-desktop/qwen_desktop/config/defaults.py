@@ -1,56 +1,148 @@
-"""
-Default settings for Qwen Desktop.
+PROVIDERS = {
+    "opencode": {
+        "name": "OpenCode Zen",
+        "base_url": "https://opencode.ai/zen/v1",
+        "allow_anonymous": True,
+        "models": [
+            "deepseek-v4-flash",
+            "claude-sonnet-4-20250514",
+            "claude-haiku-3-5-20241022",
+            "gemini-2.5-pro-exp-03-25",
+            "gemini-2.5-flash-preview-05-15",
+            "gemini-2.0-flash-exp",
+            "gpt-5.5",
+            "gpt-5.5-pro",
+            "gpt-5.4-mini",
+            "gpt-5.4-nano",
+            "gpt-5.3-codex",
+            "gpt-5.2",
+            "gpt-5.1-codex",
+            "gpt-5.1",
+            "gpt-5",
+            "gpt-5-codex",
+            "gpt-5-nano",
+            "llama-3.3-70b-specdec",
+            "mistral-medium-3.5-128b",
+            "qwen3.6-plus",
+            "qwen3.5-plus",
+            "minimax-m2.7",
+            "minimax-m2.5",
+            "glm-5.1",
+            "kimi-k2.6",
+            "kimi-k2.5",
+        ],
+        "free_models": [
+            "deepseek-v4-flash-free",
+            "mimo-v2.5-free",
+            "qwen3.6-plus-free",
+            "minimax-m3-free",
+            "nemotron-3-super-free",
+            "gemini-2.0-flash-exp",
+        ],
+        "docs_url": "https://opencode.ai/zen",
+        "api_key_hint": "occ_... or sk-...",
+    },
+    "deepseek": {
+        "name": "DeepSeek",
+        "base_url": "https://api.deepseek.com",
+        "models": [
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+        ],
+        "docs_url": "https://platform.deepseek.com/api_keys",
+        "api_key_hint": "sk-...",
+    },
+    "openrouter": {
+        "name": "OpenRouter",
+        "base_url": "https://openrouter.ai/api/v1",
+        "models": [
+            "deepseek/deepseek-v4-flash",
+            "deepseek/deepseek-v4-pro",
+            "google/gemini-3.5-flash",
+            "google/gemini-3.1-flash-lite",
+            "google/gemini-2.5-flash",
+            "openai/gpt-5.5",
+            "openai/gpt-5.5-pro",
+            "openai/gpt-5.4-mini",
+            "openai/gpt-chat-latest",
+            "openai/gpt-mini-latest",
+            "anthropic/claude-opus-4.8",
+            "anthropic/claude-sonnet-4.6",
+            "anthropic/claude-haiku-3.5",
+            "qwen/qwen3.7-max",
+            "qwen/qwen3.5-plus",
+            "meta-llama/llama-3.3-70b-instruct",
+            "mistralai/mistral-medium-3.5",
+            "minimax/minimax-m3",
+            "xai/grok-4.3",
+            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+            "stepfun/step-3.7-flash",
+        ],
+        "docs_url": "https://openrouter.ai/keys",
+        "api_key_hint": "sk-or-v1-...",
+    },
+    "nvidia": {
+        "name": "NVIDIA NIM",
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "models": [
+            "nvidia/llama-3.3-nemotron-super-49b-v1",
+            "nvidia/nemotron-3-super-120b-a12b",
+            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+            "deepseek/deepseek-v4-flash",
+            "deepseek/deepseek-v4-pro",
+            "mistralai/mistral-medium-3.5-128b",
+            "google/gemma-4-31b-it",
+            "qwen/qwen3.5-122b-a10b",
+            "minimax/minimax-m2.7",
+            "stepfun/step-3.5-flash",
+            "z-ai/glm-5.1",
+        ],
+        "docs_url": "https://build.nvidia.com",
+        "api_key_hint": "nvapi-...",
+    },
+    "gemini": {
+        "name": "Google Gemini",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "models": [
+            "gemini-3.5-flash",
+            "gemini-3.1-flash-lite",
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+        ],
+        "docs_url": "https://aistudio.google.com/apikey",
+        "api_key_hint": "AIza...",
+    },
+    "custom": {
+        "name": "Custom (OpenAI-Compatible)",
+        "base_url": "",
+        "models": [],
+        "docs_url": "",
+        "api_key_hint": "sk-...",
+    },
+}
 
-Contains all default configuration values.
-"""
-
-from typing import Any
-
-
-DEFAULT_SETTINGS: dict[str, Any] = {
-    # API Configuration - Qwen OAuth uses DashScope API (same as qwen-code)
-    # OAuth token is used as API key with OpenAI SDK
-    "api_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "api_model": "qwen-coder-plus",
-    "api_timeout": 60,
-    
-    # OAuth Configuration
-    "oauth_client_id": "",
-    "oauth_client_secret": "",
-    "oauth_redirect_uri": "http://localhost:8080/callback",
-    "oauth_scopes": ["openid", "email", "profile"],
-    
-    # UI Configuration
+DEFAULT_SETTINGS: dict[str, any] = {
+    "provider": "openrouter",
+    "api_base_url": PROVIDERS["openrouter"]["base_url"],
+    "api_model": PROVIDERS["openrouter"]["models"][0],
+    "api_key": "",
+    "api_timeout": 120,
     "theme": "dark",
     "font_size": 12,
     "window_width": 1200,
     "window_height": 800,
-    
-    # File Attachments
     "max_file_size_mb": 10,
     "max_attachments": 10,
     "allowed_extensions": [
-        # Code files
         ".py", ".js", ".ts", ".tsx", ".jsx",
         ".java", ".go", ".rs", ".cpp", ".c", ".h", ".hpp",
         ".cs", ".php", ".rb", ".swift", ".kt", ".scala",
-        # Config files
         ".json", ".yaml", ".yml", ".toml", ".ini", ".xml",
-        # Documents
         ".md", ".txt", ".rst", ".html", ".css",
-        # Images (for multimodal)
         ".png", ".jpg", ".jpeg", ".gif", ".webp",
     ],
-    
-    # Application
-    "check_for_updates": True,
+    "check_for_updates": False,
     "send_analytics": False,
     "auto_save_conversations": True,
-}
-
-# OAuth endpoints (Qwen/Google OAuth)
-OAUTH_ENDPOINTS = {
-    "authorization_url": "https://accounts.google.com/o/oauth2/v2/auth",
-    "token_url": "https://oauth2.googleapis.com/token",
-    "userinfo_url": "https://www.googleapis.com/oauth2/v3/userinfo",
 }

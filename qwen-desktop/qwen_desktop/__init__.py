@@ -1,9 +1,4 @@
-"""
-Qwen Desktop - PyQt GUI application for Qwen AI assistant.
+"""AI Desktop Assistant - PyQt GUI application using OpenRouter API."""
 
-A desktop application that brings the Qwen Code AI agent experience
-to a native GUI environment with OAuth authentication and file attachments.
-"""
-
-__version__ = "0.4.0"
-__author__ = "Qwen Desktop Team"
+__version__ = "0.5.0"
+__author__ = "AI Desktop Team"

@@ -1,17 +1,11 @@
-"""
-Data models for Qwen Desktop.
-
-Contains dataclasses and types used throughout the application.
-"""
-
 from dataclasses import dataclass
 from typing import Optional
+
+from qwen_desktop.config.defaults import PROVIDERS
 
 
 @dataclass
 class ModelInfo:
-    """Information about an AI model."""
-
     id: str
     name: str
     description: str = ""
@@ -21,84 +15,40 @@ class ModelInfo:
 
     @classmethod
     def get_default_models(cls) -> list["ModelInfo"]:
-        """Get list of default Qwen models.
-        
-        Returns:
-            List of model info.
-        """
-        return [
-            cls(
-                id="qwen-coder",
-                name="Qwen Coder",
-                description="Optimized for coding tasks",
-                max_tokens=8192,
-                supports_vision=False,
-                supports_function_calling=True,
-            ),
-            cls(
-                id="qwen-plus",
-                name="Qwen Plus",
-                description="Balanced performance and capability",
-                max_tokens=8192,
-                supports_vision=True,
-                supports_function_calling=True,
-            ),
-            cls(
-                id="qwen-max",
-                name="Qwen Max",
-                description="Most capable model",
-                max_tokens=8192,
-                supports_vision=True,
-                supports_function_calling=True,
-            ),
-        ]
+        models = []
+        for pid, info in PROVIDERS.items():
+            for mid in info.get("models", []):
+                models.append(cls(
+                    id=mid,
+                    name=f"{info['name']}: {mid}",
+                    description=f"via {info['name']}",
+                    max_tokens=8192,
+                    supports_vision=True,
+                    supports_function_calling=True,
+                ))
+        return models
 
-
-@dataclass
-class UserInfo:
-    """User account information."""
-
-    id: str
-    email: str
-    name: str
-    avatar_url: Optional[str] = None
-    
     @classmethod
-    def from_oauth_response(cls, data: dict) -> "UserInfo":
-        """Create UserInfo from OAuth response.
-        
-        Args:
-            data: OAuth response data.
-            
-        Returns:
-            UserInfo instance.
-        """
-        return cls(
-            id=data.get("sub", ""),
-            email=data.get("email", ""),
-            name=data.get("name", ""),
-            avatar_url=data.get("picture"),
-        )
+    def get_provider_models(cls, provider_id: str) -> list["ModelInfo"]:
+        info = PROVIDERS.get(provider_id, {})
+        return [cls(
+            id=mid,
+            name=f"{info.get('name', provider_id)}: {mid}",
+            description=f"via {info.get('name', provider_id)}",
+            max_tokens=8192,
+            supports_vision=True,
+            supports_function_calling=True,
+        ) for mid in info.get("models", [])]
 
 
 @dataclass
 class TokenUsage:
-    """Token usage statistics."""
-
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
-    
+
     @classmethod
     def from_api_response(cls, data: dict) -> "TokenUsage":
-        """Create TokenUsage from API response.
-        
-        Args:
-            data: Usage data from API.
-            
-        Returns:
-            TokenUsage instance.
-        """
         return cls(
             prompt_tokens=data.get("prompt_tokens", 0),
             completion_tokens=data.get("completion_tokens", 0),

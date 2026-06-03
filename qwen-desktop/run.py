@@ -1,5 +1,5 @@
 """
-Qwen Desktop Application Runner.
+AI Desktop Assistant Runner.
 
 Run with: py run.py
 """
@@ -7,16 +7,14 @@ Run with: py run.py
 import sys
 from pathlib import Path
 
-# Add the project root to the path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from qwen_desktop.app import QwenDesktopApp
+from qwen_desktop.app import DesktopApp
 
 
 def main():
-    """Run the application."""
-    app = QwenDesktopApp(sys.argv)
+    app = DesktopApp(sys.argv)
     sys.exit(app.run())
 
 

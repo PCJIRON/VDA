@@ -1,7 +1,6 @@
 """
-Slash command registry for Qwen Desktop.
+Slash command registry.
 
-Port of qwen-code's command system (packages/cli/src/commands/).
 Provides /help, /clear, /model, /theme, /stats, /quit commands.
 """
 
@@ -29,7 +28,7 @@ class SlashCommand:
 
 
 class CommandRegistry:
-    """Registry for slash commands (matches qwen-code's CommandRegistry)."""
+    """Registry for slash commands."""
 
     def __init__(self) -> None:
         """Initialize command registry with default commands."""

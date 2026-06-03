@@ -1,6 +1,7 @@
 from typing import Optional, AsyncGenerator, List, Dict, Any, Tuple
 import json
 import logging
+import uuid
 
 import httpx
 
@@ -11,46 +12,45 @@ from qwen_desktop.auth.provider_config import ProviderConfig
 logger = logging.getLogger(__name__)
 
 
-class AuthenticationError(Exception):
-    pass
-
-
-class APIClient:
+class ZenClient:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self._config = ProviderConfig(settings)
 
     def _get_headers(self) -> dict:
-        provider_id = self._config.get_provider_id()
         api_key = self._config.get_api_key()
+        if not api_key:
+            api_key = "public"
 
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
+            "x-opencode-client": "vda-desktop",
+            "x-opencode-session": str(uuid.uuid4()),
+            "x-opencode-project": "global",
+            "x-opencode-request": str(uuid.uuid4()),
         }
-
-        if provider_id == "gemini":
-            headers["x-goog-api-key"] = api_key
-        elif provider_id == "openrouter":
-            headers["HTTP-Referer"] = "https://qwen-desktop.local"
-            headers["X-Title"] = "Qwen Desktop"
-
         return headers
 
-    def _create_client(self) -> httpx.AsyncClient:
-        base_url = self._config.get_base_url().rstrip("/")
-        return httpx.AsyncClient(
-            base_url=base_url,
-            headers=self._get_headers(),
-            timeout=httpx.Timeout(self.settings.get("api_timeout", 120)),
-        )
+    def _get_base_url(self) -> str:
+        return self._config.get_base_url().rstrip("/")
 
     async def test_connection(self) -> Tuple[bool, str]:
         model = self._config.get_model()
-        client = self._create_client()
+        free_models = self._config.get_free_models()
+        test_model = model if model else (free_models[0] if free_models else "deepseek-v4-flash-free")
+
+        headers = self._get_headers()
+        base_url = self._get_base_url()
+
+        client = httpx.AsyncClient(
+            base_url=base_url,
+            headers=headers,
+            timeout=httpx.Timeout(15),
+        )
         try:
             payload = {
-                "model": model,
+                "model": test_model,
                 "messages": [{"role": "user", "content": "Say OK"}],
                 "stream": False,
                 "max_tokens": 10,
@@ -60,10 +60,21 @@ class APIClient:
                 data = response.json()
                 content = data["choices"][0]["message"]["content"]
                 return True, content[:200]
+
             error_body = await response.aread()
-            return False, f"HTTP {response.status_code}: {error_body[:200].decode(errors='replace')}"
+            error_text = error_body[:200].decode(errors="replace")
+
+            if response.status_code == 401:
+                return False, "Invalid or missing API key — get one at https://opencode.ai/zen"
+            if response.status_code == 500:
+                return False, "Zen server error (500) — the service may be down or your key lacks billing. Try a free model like deepseek-v4-flash-free without a key, or visit console.opencode.ai"
+
+            return False, f"HTTP {response.status_code}: {error_text}"
+
         except httpx.TimeoutException:
-            return False, "Request timed out"
+            return False, "Request timed out — check your internet or try a different model"
+        except httpx.ConnectError:
+            return False, f"Cannot connect to {base_url} — check your internet"
         except Exception as e:
             return False, str(e)
         finally:
@@ -114,7 +125,8 @@ class APIClient:
         vision_mode: bool = False,
     ) -> AsyncGenerator[str, None]:
         model = self._config.get_model()
-        client = self._create_client()
+        headers = self._get_headers()
+        base_url = self._get_base_url()
 
         messages = conversation_history.copy()
 
@@ -143,9 +155,13 @@ class APIClient:
 
         messages.append({"role": "user", "content": user_content})
 
-        provider_name = self._config.get_provider_name()
-        logger.info(f"Sending {len(messages)} messages to {provider_name} model {model}")
+        logger.info(f"Sending {len(messages)} messages to OpenCode Zen model {model}")
 
+        client = httpx.AsyncClient(
+            base_url=base_url,
+            headers=headers,
+            timeout=httpx.Timeout(self.settings.get("api_timeout", 120)),
+        )
         try:
             payload = {
                 "model": model,
@@ -157,8 +173,13 @@ class APIClient:
             async with client.stream("POST", "/chat/completions", json=payload) as response:
                 if response.status_code != 200:
                     error_text = await response.aread()
-                    logger.error(f"{provider_name} API error {response.status_code}: {error_text}")
-                    yield f"Error: API returned {response.status_code}. Check your API key and model name."
+                    logger.error(f"OpenCode Zen API error {response.status_code}: {error_text}")
+                    if response.status_code == 401:
+                        yield "Error: Invalid or missing API key. Get one at https://opencode.ai/zen or use a free model without a key."
+                    elif response.status_code == 500:
+                        yield "Error: Zen server error (500). Try a free model like deepseek-v4-flash-free without an API key, or visit console.opencode.ai to set up billing."
+                    else:
+                        yield f"Error: API returned {response.status_code}. Check your API key and model name."
                     return
 
                 async for line in response.aiter_lines():
@@ -182,7 +203,7 @@ class APIClient:
         except httpx.TimeoutException:
             yield "Error: Request timed out. Check your internet connection."
         except Exception as e:
-            logger.error(f"{provider_name} API error: {e}", exc_info=True)
+            logger.error(f"OpenCode Zen API error: {e}", exc_info=True)
             yield f"Error: {e}"
         finally:
             await client.aclose()
