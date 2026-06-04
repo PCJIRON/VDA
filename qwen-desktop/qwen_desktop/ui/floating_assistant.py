@@ -74,9 +74,13 @@ class APIServerWorker(QThread):
 
     async def _stream(self):
         try:
+            chunk_count = 0
             async for chunk in self.api_client.send_message(
                 self.message, self.history, vision_mode=self.vision_mode
             ):
+                chunk_count += 1
+                if chunk_count == 1:
+                    logger.info(f"[Worker] First chunk received ({len(chunk)} chars): {chunk[:80]}")
                 self._full_response += chunk
                 visible, thinking = extract_thinking(self._full_response)
                 if visible != self._visible:
@@ -85,8 +89,10 @@ class APIServerWorker(QThread):
                 if thinking != self._thinking:
                     self._thinking = thinking
                     self.thinking_changed.emit(thinking)
+            logger.info(f"[Worker] Stream complete: {chunk_count} chunks, {len(self._full_response)} chars total")
             self.finished_response.emit(self._full_response)
         except Exception as e:
+            logger.error(f"[Worker] Stream error: {e}", exc_info=True)
             self.error_occurred.emit(str(e))
 
 

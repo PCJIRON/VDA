@@ -182,16 +182,22 @@ class ZenClient:
                         yield f"Error: API returned {response.status_code}. Check your API key and model name."
                     return
 
+                line_count = 0
                 async for line in response.aiter_lines():
+                    line_count += 1
+                    if line_count == 1:
+                        logger.info(f"[ZenClient] First line: {line[:100]}")
                     if not line.startswith("data: "):
                         continue
                     data_str = line[6:].strip()
                     if data_str == "[DONE]":
+                        logger.info(f"[ZenClient] Stream DONE after {line_count} lines")
                         break
                     try:
                         data = json.loads(data_str)
                         choices = data.get("choices", [])
                         if not choices:
+                            logger.debug(f"[ZenClient] No choices in line {line_count}: {data_str[:200]}")
                             continue
                         delta = choices[0].get("delta", {})
                         content = delta.get("content", "")
@@ -207,8 +213,10 @@ class ZenClient:
                                             yield t
                             elif isinstance(reasoning, str):
                                 yield reasoning
-                    except json.JSONDecodeError:
+                    except json.JSONDecodeError as e:
+                        logger.debug(f"[ZenClient] JSON parse error on line {line_count}: {e}")
                         continue
+                logger.info(f"[ZenClient] Stream ended: {line_count} total lines processed")
 
         except httpx.TimeoutException:
             yield "Error: Request timed out. Check your internet connection."
