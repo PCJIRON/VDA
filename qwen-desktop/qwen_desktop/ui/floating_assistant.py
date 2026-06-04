@@ -200,25 +200,31 @@ class MessageBubble(QWidget):
         self.msg_lbl.setText(new_text)
 
     def set_thinking(self, text: str):
-        if not text:
-            self._thinking_toggle.hide()
-            self._thinking_content.setText("")
-            return
-        self._thinking_content.setText(text)
-        self._thinking_toggle.show()
-        if self._thinking_visible:
-            height = min(200, self._thinking_content.sizeHint().height())
-            self._thinking_content.setMaximumHeight(height)
+        try:
+            if not text:
+                self._thinking_toggle.hide()
+                self._thinking_content.setText("")
+                return
+            self._thinking_content.setText(text)
+            self._thinking_toggle.show()
+            if self._thinking_visible:
+                height = min(200, self._thinking_content.sizeHint().height())
+                self._thinking_content.setMaximumHeight(height)
+        except Exception as e:
+            logger.error(f"[UI] set_thinking error: {e}", exc_info=True)
 
     def _toggle_thinking(self):
-        self._thinking_visible = not self._thinking_visible
-        if self._thinking_visible:
-            height = min(200, self._thinking_content.sizeHint().height())
-            self._thinking_content.setMaximumHeight(height)
-            self._thinking_toggle.setText("\u25BC Thinking")
-        else:
-            self._thinking_content.setMaximumHeight(0)
-            self._thinking_toggle.setText("\u2699 Thinking...")
+        try:
+            self._thinking_visible = not self._thinking_visible
+            if self._thinking_visible:
+                height = min(200, self._thinking_content.sizeHint().height())
+                self._thinking_content.setMaximumHeight(height)
+                self._thinking_toggle.setText("\u25BC Thinking")
+            else:
+                self._thinking_content.setMaximumHeight(0)
+                self._thinking_toggle.setText("\u2699 Thinking...")
+        except Exception as e:
+            logger.error(f"[UI] _toggle_thinking error: {e}", exc_info=True)
 
 
 class ChatHistoryPopup(QWidget):
@@ -406,8 +412,11 @@ class ChatHistoryPopup(QWidget):
             self.scroll_to_bottom()
 
     def update_thinking(self, thinking_text):
-        if self._last_ai_bubble:
-            self._last_ai_bubble.set_thinking(thinking_text)
+        try:
+            if self._last_ai_bubble:
+                self._last_ai_bubble.set_thinking(thinking_text)
+        except Exception as e:
+            logger.error(f"[UI] update_thinking error: {e}", exc_info=True)
 
     def scroll_to_bottom(self):
         bar = self.scroll.verticalScrollBar()
@@ -1124,15 +1133,21 @@ Be PRECISE - center of element. Example:
         self._chat_history.append({"role": "user", "content": content_payload if len(content_payload) > 1 else text})
 
     def _on_api_chunk(self, chunk):
-        self.history_popup.update_last_message(chunk)
+        try:
+            self.history_popup.update_last_message(chunk)
+        except Exception as e:
+            logger.error(f"[UI] _on_api_chunk error: {e}", exc_info=True)
 
     def _on_api_finished(self, full_text):
-        self._set_send_mode()
-        self.history_popup.update_last_message(full_text)
-        self.last_msg_uuid = self.session_service.save_message(
-            self.session_id, "assistant", full_text, parent_uuid=self.last_msg_uuid
-        )
-        self._chat_history.append({"role": "assistant", "content": full_text})
+        try:
+            self._set_send_mode()
+            self.history_popup.update_last_message(full_text)
+            self.last_msg_uuid = self.session_service.save_message(
+                self.session_id, "assistant", full_text, parent_uuid=self.last_msg_uuid
+            )
+            self._chat_history.append({"role": "assistant", "content": full_text})
+        except Exception as e:
+            logger.error(f"[UI] _on_api_finished error: {e}", exc_info=True)
 
         if '"action"' in full_text and ('"target_name"' in full_text or '"description"' in full_text):
             logger.info("LLM returned action with target - triggering UIED execution")
@@ -1461,8 +1476,11 @@ Be PRECISE - center of element. Example:
             return None, None
 
     def _on_api_error(self, err):
-        self._set_send_mode()
-        self.history_popup.update_last_message(f"API Error: {err}")
+        try:
+            self._set_send_mode()
+            self.history_popup.update_last_message(f"API Error: {err}")
+        except Exception as e:
+            logger.error(f"[UI] _on_api_error error: {e}", exc_info=True)
 
     def _set_stop_mode(self):
         self._is_sending = True

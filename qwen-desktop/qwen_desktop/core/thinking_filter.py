@@ -20,9 +20,10 @@ THINKING_PATTERNS = [
 ]
 
 LINE_STARTS_TO_REMOVE = [
-    "Let me", "Reasoning:", "I'll approach", "I need to",
-    "First,", "First let", "Okay,", "Alright,",
-    "Thinking:", "Thought:", "Step ", "Stepby", "Step-by-step",
+    "Reasoning:", "Thinking:", "Thought:", "Step ",
+    "Step-by-step:", "Chain of thought:", "Let me think",
+    "Let me analyze", "Let me reason", "Let me work through",
+    "I'll approach this", "I need to approach",
 ]
 
 
