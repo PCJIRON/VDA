@@ -6,12 +6,12 @@ Or: py run.py
 """
 
 import sys
-from qwen_desktop.app import QwenDesktopApp
+from qwen_desktop.app import DesktopApp
 
 
 def main():
     """Main entry point for the application."""
-    app = QwenDesktopApp(sys.argv)
+    app = DesktopApp(sys.argv)
     sys.exit(app.run())
 
 

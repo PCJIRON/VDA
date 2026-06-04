@@ -20,9 +20,15 @@ import numpy as np
 from qwen_desktop.core.session_service import SessionService
 from qwen_desktop.core.vision_capture import VisionCaptureService
 from qwen_desktop.core.pyautogui_executor import PyAutoGUIExecutor
+from qwen_desktop.core.enhanced_executor import EnhancedExecutor
+from qwen_desktop.core.thinking_filter import extract_thinking
+from qwen_desktop.core.auto_template_extractor import AutoTemplateExtractor
 from qwen_desktop.auth.provider_config import ProviderConfig
 from qwen_desktop.core.api_client import APIClient
 from qwen_desktop.core.zen_client import ZenClient
+from qwen_desktop.core.memory_manager import ShortTermMemory, LongTermMemory, DailyTaskCache
+from qwen_desktop.core.task_decomposer import TaskDecomposer
+from qwen_desktop.core.behavior_tracker import BehaviorTracker
 import uuid
 
 try:
@@ -46,6 +52,7 @@ logger = logging.getLogger(__name__)
 
 class APIServerWorker(QThread):
     chunk_received = pyqtSignal(str)
+    thinking_changed = pyqtSignal(str)
     finished_response = pyqtSignal(str)
     error_occurred = pyqtSignal(str)
 
@@ -56,6 +63,8 @@ class APIServerWorker(QThread):
         self.history = list(history)
         self.vision_mode = vision_mode
         self._full_response = ""
+        self._thinking = ""
+        self._visible = ""
 
     def run(self):
         try:
@@ -69,7 +78,13 @@ class APIServerWorker(QThread):
                 self.message, self.history, vision_mode=self.vision_mode
             ):
                 self._full_response += chunk
-                self.chunk_received.emit(self._full_response)
+                visible, thinking = extract_thinking(self._full_response)
+                if visible != self._visible:
+                    self._visible = visible
+                    self.chunk_received.emit(visible)
+                if thinking != self._thinking:
+                    self._thinking = thinking
+                    self.thinking_changed.emit(thinking)
             self.finished_response.emit(self._full_response)
         except Exception as e:
             self.error_occurred.emit(str(e))
@@ -79,6 +94,7 @@ class MessageBubble(QWidget):
     def __init__(self, text: str, sender: str, is_vision: bool = False, attachments: list = None, parent=None):
         super().__init__(parent)
         self.sender = sender
+        self._thinking_visible = False
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(16, 12, 16, 12)
 
@@ -119,6 +135,31 @@ class MessageBubble(QWidget):
         self.msg_lbl.setStyleSheet("background: transparent; border: none;")
         self.frame_layout.addWidget(self.msg_lbl)
 
+        if sender == "ai":
+            self._thinking_toggle = QPushButton("\u2699 Thinking...")
+            self._thinking_toggle.setStyleSheet("""
+                QPushButton {
+                    background: transparent; color: #6b7280; border: 1px solid #e5e7eb;
+                    border-radius: 4px; padding: 2px 6px; font-size: 10px;
+                    text-align: left;
+                }
+                QPushButton:hover { background: #f3f4f6; }
+            """)
+            self._thinking_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._thinking_toggle.hide()
+            self._thinking_toggle.clicked.connect(self._toggle_thinking)
+            self.frame_layout.addWidget(self._thinking_toggle)
+
+            self._thinking_content = QLabel("")
+            self._thinking_content.setWordWrap(True)
+            self._thinking_content.setStyleSheet("""
+                background: #f9fafb; color: #6b7280; border: none;
+                border-left: 2px solid #d1d5db; padding: 4px 8px;
+                font-size: 10px; font-family: monospace;
+            """)
+            self._thinking_content.setMaximumHeight(0)
+            self.frame_layout.addWidget(self._thinking_content)
+
         if attachments:
             for att in attachments:
                 img_url = att.get('image_url') or att.get('base64')
@@ -157,6 +198,27 @@ class MessageBubble(QWidget):
 
     def update_text(self, new_text: str):
         self.msg_lbl.setText(new_text)
+
+    def set_thinking(self, text: str):
+        if not text:
+            self._thinking_toggle.hide()
+            self._thinking_content.setText("")
+            return
+        self._thinking_content.setText(text)
+        self._thinking_toggle.show()
+        if self._thinking_visible:
+            height = min(200, self._thinking_content.sizeHint().height())
+            self._thinking_content.setMaximumHeight(height)
+
+    def _toggle_thinking(self):
+        self._thinking_visible = not self._thinking_visible
+        if self._thinking_visible:
+            height = min(200, self._thinking_content.sizeHint().height())
+            self._thinking_content.setMaximumHeight(height)
+            self._thinking_toggle.setText("\u25BC Thinking")
+        else:
+            self._thinking_content.setMaximumHeight(0)
+            self._thinking_toggle.setText("\u2699 Thinking...")
 
 
 class ChatHistoryPopup(QWidget):
@@ -343,6 +405,10 @@ class ChatHistoryPopup(QWidget):
             self._last_ai_bubble.update_text(text)
             self.scroll_to_bottom()
 
+    def update_thinking(self, thinking_text):
+        if self._last_ai_bubble:
+            self._last_ai_bubble.set_thinking(thinking_text)
+
     def scroll_to_bottom(self):
         bar = self.scroll.verticalScrollBar()
         bar.setValue(bar.maximum())
@@ -407,6 +473,7 @@ class FloatingAssistant(QWidget):
         self._vision_service = None
 
         self._pyautogui_executor = PyAutoGUIExecutor(mode=self._pyautogui_mode)
+        self._enhanced_executor = EnhancedExecutor(mode=self._pyautogui_mode)
 
         self._template_cache = {}
         self._template_threshold = 0.8
@@ -416,6 +483,14 @@ class FloatingAssistant(QWidget):
         self._uied_overlay = None
         self._uied_components = []
         self._is_uied_detecting = False
+
+        self._thinking_text = ""
+        self._stm = ShortTermMemory()
+        self._ltm = LongTermMemory()
+        self._daily_cache = DailyTaskCache()
+        self._behavior = BehaviorTracker()
+        self._auto_template = AutoTemplateExtractor()
+        self._task_decomposer = None
 
         self.load_session_clicked = lambda u: self._switch_to_session(u)
         self.history_popup.populate_sessions(
@@ -852,6 +927,7 @@ class FloatingAssistant(QWidget):
             self.api_client, payload, self._chat_history, vision_mode=True
         )
         self.worker.chunk_received.connect(self._on_api_chunk)
+        self.worker.thinking_changed.connect(self.history_popup.update_thinking)
         self.worker.finished_response.connect(self._on_api_finished)
         self.worker.error_occurred.connect(self._on_api_error)
         self.worker.start()
@@ -1040,6 +1116,7 @@ Be PRECISE - center of element. Example:
             vision_mode=self.is_vision_enabled,
         )
         self.worker.chunk_received.connect(self._on_api_chunk)
+        self.worker.thinking_changed.connect(self.history_popup.update_thinking)
         self.worker.finished_response.connect(self._on_api_finished)
         self.worker.error_occurred.connect(self._on_api_error)
         self.worker.start()
