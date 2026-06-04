@@ -210,9 +210,9 @@ class ZenClient:
                                     if isinstance(r, dict):
                                         t = r.get("text", "")
                                         if t:
-                                            yield t
+                                            yield f"<think>{t}</think>"
                             elif isinstance(reasoning, str):
-                                yield reasoning
+                                yield f"<think>{reasoning}</think>"
                     except json.JSONDecodeError as e:
                         logger.debug(f"[ZenClient] JSON parse error on line {line_count}: {e}")
                         continue

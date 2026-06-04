@@ -89,8 +89,13 @@ class APIServerWorker(QThread):
                 if thinking != self._thinking:
                     self._thinking = thinking
                     self.thinking_changed.emit(thinking)
-            logger.info(f"[Worker] Stream complete: {chunk_count} chunks, {len(self._full_response)} chars total")
-            self.finished_response.emit(self._full_response)
+            logger.info(f"[Worker] Stream complete: {chunk_count} chunks, {len(self._full_response)} chars total, visible={len(self._visible)}")
+            if not self._full_response and chunk_count == 0:
+                logger.warning("[Worker] API returned no content")
+                self.finished_response.emit("")
+                return
+            final_visible = self._visible if self._visible else self._full_response
+            self.finished_response.emit(final_visible)
         except Exception as e:
             logger.error(f"[Worker] Stream error: {e}", exc_info=True)
             self.error_occurred.emit(str(e))
