@@ -5,11 +5,24 @@ logger = logging.getLogger(__name__)
 
 THINKING_PATTERNS = [
     (r'<thinking>(.*?)</thinking>', re.DOTALL),
+    (r'<think>(.*?)</think>', re.DOTALL),
     (r'<Thought>(.*?)</Thought>', re.DOTALL),
     (r'<CoT>(.*?)</CoT>', re.DOTALL),
     (r'\[thinking\](.*?)\[/thinking\]', re.DOTALL),
-    (r'\n\s*Reasoning:.*?(?=\n|$)', 0),
-    (r'\n\s*Let me think.*?(?=\n|$)', 0),
+    (r'\[reasoning\](.*?)\[/reasoning\]', re.DOTALL),
+    (r'<reasoning>(.*?)</reasoning>', re.DOTALL),
+    (r'reasoning_content:\s*(.*?)(?=\n\S|\Z)', re.DOTALL),
+    (r'reasoning_details:\s*(.*?)(?=\n\S|\Z)', re.DOTALL),
+    (r'\n\s*Reasoning:.*?(?=\n\s*\S|\Z)', re.DOTALL),
+    (r'\n\s*Let me think.*?(?=\n\s*\S|\Z)', re.DOTALL),
+    (r'\n\s*Let me analyze.*?(?=\n\s*\S|\Z)', re.DOTALL),
+    (r'\n\s*I\'ll approach this.*?(?=\n\s*\S|\Z)', re.DOTALL),
+]
+
+LINE_STARTS_TO_REMOVE = [
+    "Let me", "Reasoning:", "I'll approach", "I need to",
+    "First,", "First let", "Okay,", "Alright,",
+    "Thinking:", "Thought:", "Step ", "Stepby", "Step-by-step",
 ]
 
 
@@ -17,7 +30,16 @@ def strip_thinking(text: str) -> str:
     for pattern, flags in THINKING_PATTERNS:
         text = re.sub(pattern, '', text, flags=flags)
     lines = text.split('\n')
-    filtered = [l for l in lines if not l.strip().startswith('Let me') and not l.strip().startswith('Reasoning:')]
+    filtered = []
+    for l in lines:
+        stripped = l.strip()
+        skip = False
+        for prefix in LINE_STARTS_TO_REMOVE:
+            if stripped.startswith(prefix):
+                skip = True
+                break
+        if not skip:
+            filtered.append(l)
     return '\n'.join(filtered).strip()
 
 
@@ -32,7 +54,12 @@ def extract_thinking(text: str) -> tuple[str, str]:
     visible_lines = []
     for l in visible.split('\n'):
         stripped = l.strip()
-        if stripped.startswith('Let me') or stripped.startswith('Reasoning:'):
+        skip = False
+        for prefix in LINE_STARTS_TO_REMOVE:
+            if stripped.startswith(prefix):
+                skip = True
+                break
+        if skip:
             thinking_parts.append(stripped)
         else:
             visible_lines.append(l)

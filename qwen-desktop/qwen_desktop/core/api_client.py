@@ -176,6 +176,16 @@ class APIClient:
                         content = delta.get("content", "")
                         if content:
                             yield content
+                        reasoning = delta.get("reasoning_content") or delta.get("reasoning_details")
+                        if reasoning:
+                            if isinstance(reasoning, list):
+                                for r in reasoning:
+                                    if isinstance(r, dict):
+                                        t = r.get("text", "")
+                                        if t:
+                                            yield t
+                            elif isinstance(reasoning, str):
+                                yield reasoning
                     except json.JSONDecodeError:
                         continue
 
