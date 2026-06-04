@@ -23,6 +23,7 @@ from qwen_desktop.core.pyautogui_executor import PyAutoGUIExecutor
 from qwen_desktop.core.enhanced_executor import EnhancedExecutor
 from qwen_desktop.core.thinking_filter import extract_thinking
 from qwen_desktop.core.auto_template_extractor import AutoTemplateExtractor
+from qwen_desktop.core.default_prompt import build_system_prompt
 from qwen_desktop.auth.provider_config import ProviderConfig
 from qwen_desktop.core.api_client import APIClient
 from qwen_desktop.core.zen_client import ZenClient
@@ -943,8 +944,9 @@ class FloatingAssistant(QWidget):
             parent_uuid=self.last_msg_uuid,
         )
 
+        prompted_history = self._build_history_with_prompt(self._chat_history)
         self.worker = APIServerWorker(
-            self.api_client, payload, self._chat_history, vision_mode=True
+            self.api_client, payload, prompted_history, vision_mode=True
         )
         self.worker.chunk_received.connect(self._on_api_chunk)
         self.worker.thinking_changed.connect(self.history_popup.update_thinking)
@@ -1062,6 +1064,21 @@ class FloatingAssistant(QWidget):
         else:
             QTimer.singleShot(400, lambda: self.history_popup.add_message("Please configure API key in Settings first.", "ai"))
 
+    def _build_history_with_prompt(self, history: list) -> list:
+        try:
+            import pyautogui
+            sw, sh = pyautogui.size()
+        except Exception:
+            sw, sh = 1920, 1080
+        prompt = build_system_prompt(
+            screen_width=sw, screen_height=sh,
+            components=self._uied_components,
+        )
+        has_system = any(m.get("role") == "system" for m in history)
+        if not has_system:
+            return [{"role": "system", "content": prompt}] + list(history)
+        return list(history)
+    
     def _handle_api(self, text, attachments):
         self.history_popup.add_message("...", "ai")
 
@@ -1129,10 +1146,11 @@ Be PRECISE - center of element. Example:
                     content_payload.append({"type": "text", "text": ""})
                 content_payload[0]['text'] += f"\n\n<document path='{att['name']}'>\n{att['content']}\n</document>"
 
+        prompted_history = self._build_history_with_prompt(self._chat_history)
         self.worker = APIServerWorker(
             self.api_client,
             content_payload if len(content_payload) > 1 else text,
-            self._chat_history,
+            prompted_history,
             vision_mode=self.is_vision_enabled,
         )
         self.worker.chunk_received.connect(self._on_api_chunk)
