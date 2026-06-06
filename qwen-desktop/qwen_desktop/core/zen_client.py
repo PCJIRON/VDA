@@ -1,22 +1,19 @@
-from typing import Optional, AsyncGenerator, List, Dict, Any, Tuple
-import json
 import logging
 import uuid
+from collections.abc import AsyncGenerator
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
 from qwen_desktop.config.settings import Settings
-from qwen_desktop.auth.provider_config import ProviderConfig
-from qwen_desktop.core.default_prompt import build_system_prompt
-
+from qwen_desktop.core._base_client import BaseClient
 
 logger = logging.getLogger(__name__)
 
 
-class ZenClient:
+class ZenClient(BaseClient):
     def __init__(self, settings: Settings) -> None:
-        self.settings = settings
-        self._config = ProviderConfig(settings)
+        super().__init__(settings)
 
     def _get_headers(self) -> dict:
         api_key = self._config.get_api_key()
@@ -32,9 +29,6 @@ class ZenClient:
             "x-opencode-request": str(uuid.uuid4()),
         }
         return headers
-
-    def _get_base_url(self) -> str:
-        return self._config.get_base_url().rstrip("/")
 
     async def test_connection(self) -> Tuple[bool, str]:
         model = self._config.get_model()
@@ -81,9 +75,12 @@ class ZenClient:
         finally:
             await client.aclose()
 
-    @staticmethod
-    def _get_system_prompt() -> str:
-        return build_system_prompt()
+    def _handle_stream_error(self, response: httpx.Response, provider_name: str) -> str:
+        if response.status_code == 401:
+            return "Error: Invalid or missing API key. Get one at https://opencode.ai/zen or use a free model without a key."
+        if response.status_code == 500:
+            return "Error: Zen server error (500). Try a free model like deepseek-v4-flash-free without an API key, or visit console.opencode.ai to set up billing."
+        return f"Error: API returned {response.status_code}. Check your API key and model name."
 
     async def send_message(
         self,
@@ -93,111 +90,34 @@ class ZenClient:
         vision_mode: bool = False,
     ) -> AsyncGenerator[str, None]:
         model = self._config.get_model()
-        headers = self._get_headers()
-        base_url = self._get_base_url()
-
         messages = conversation_history.copy()
 
-        if vision_mode:
-            has_system = any(m.get("role") == "system" for m in messages)
-            if not has_system:
-                messages.insert(0, {"role": "system", "content": self._get_system_prompt()})
+        self._ensure_system_prompt(messages, vision_mode)
 
-        user_content: List[Dict[str, Any]] = []
-        if isinstance(message, list):
-            user_content = list(message)
-        else:
-            user_content.append({"type": "text", "text": str(message)})
-
-        # Find first text block for potential file attachments
-        text_block = None
-        for block in user_content:
-            if block.get("type") == "text":
-                text_block = block
-                break
-        if text_block is None:
-            text_block = {"type": "text", "text": ""}
-            user_content.insert(0, text_block)
-
-        if attachments:
-            for att in attachments:
-                if att.get("type") == "image":
-                    mime = att.get("mime", "image/png")
-                    b64 = att.get("base64")
-                    if b64:
-                        user_content.append({
-                            "type": "image_url",
-                            "image_url": {"url": f"data:{mime};base64,{b64}"},
-                        })
-                elif att.get("type") == "file":
-                    doc_text = att.get("content", "")
-                    fname = att.get("name", "file")
-                    text_block["text"] += f"\n\n<document path='{fname}'>\n{doc_text}\n</document>"
+        user_content, _ = BaseClient._build_user_content(message, attachments)
 
         messages.append({"role": "user", "content": user_content})
 
         logger.info(f"Sending {len(messages)} messages to OpenCode Zen model {model}")
 
-        client = httpx.AsyncClient(
-            base_url=base_url,
-            headers=headers,
-            timeout=httpx.Timeout(self.settings.get("api_timeout", 120)),
-        )
+        client = self._create_client()
         try:
-            payload = {
-                "model": model,
-                "messages": messages,
-                "stream": True,
-                "temperature": 0.7,
-            }
+            payload = self._build_payload(model, messages)
 
             async with client.stream("POST", "/chat/completions", json=payload) as response:
                 if response.status_code != 200:
                     error_text = await response.aread()
                     logger.error(f"OpenCode Zen API error {response.status_code}: {error_text}")
-                    if response.status_code == 401:
-                        yield "Error: Invalid or missing API key. Get one at https://opencode.ai/zen or use a free model without a key."
-                    elif response.status_code == 500:
-                        yield "Error: Zen server error (500). Try a free model like deepseek-v4-flash-free without an API key, or visit console.opencode.ai to set up billing."
-                    else:
-                        yield f"Error: API returned {response.status_code}. Check your API key and model name."
+                    yield self._handle_stream_error(response, "Zen")
                     return
 
                 line_count = 0
-                async for line in response.aiter_lines():
+                async for chunk in self._parse_sse_stream(response, "Zen"):
                     line_count += 1
                     if line_count == 1:
-                        logger.info(f"[ZenClient] First line: {line[:100]}")
-                    if not line.startswith("data: "):
-                        continue
-                    data_str = line[6:].strip()
-                    if data_str == "[DONE]":
-                        logger.info(f"[ZenClient] Stream DONE after {line_count} lines")
-                        break
-                    try:
-                        data = json.loads(data_str)
-                        choices = data.get("choices", [])
-                        if not choices:
-                            logger.debug(f"[ZenClient] No choices in line {line_count}: {data_str[:200]}")
-                            continue
-                        delta = choices[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            yield content
-                        reasoning = delta.get("reasoning_content") or delta.get("reasoning_details")
-                        if reasoning:
-                            if isinstance(reasoning, list):
-                                for r in reasoning:
-                                    if isinstance(r, dict):
-                                        t = r.get("text", "")
-                                        if t:
-                                            yield f"<think>{t}</think>"
-                            elif isinstance(reasoning, str):
-                                yield f"<think>{reasoning}</think>"
-                    except json.JSONDecodeError as e:
-                        logger.debug(f"[ZenClient] JSON parse error on line {line_count}: {e}")
-                        continue
-                logger.info(f"[ZenClient] Stream ended: {line_count} total lines processed")
+                        logger.info("[ZenClient] First chunk received")
+                    yield chunk
+                logger.info(f"[ZenClient] Stream ended: {line_count} total chunks")
 
         except httpx.TimeoutException:
             yield "Error: Request timed out. Check your internet connection."

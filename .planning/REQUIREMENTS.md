@@ -60,6 +60,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **RFCT-02**: Split `floating_assistant.py` (~1988 lines) into controller + chat widgets + action modules
 - [ ] **RFCT-03**: Deduplicate APIClient/ZenClient into shared base client
 - [ ] **RFCT-04**: Extract shared ScreenEnv/ScreenDetector into utils/screen.py
+- [ ] **RFCT-05**: No Python file exceeds 100 lines — all existing files over 100 lines must be split into smaller modules with clear responsibilities
 
 ### Security
 
@@ -148,6 +149,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | RFCT-02 | Phase 1 | Pending |
 | RFCT-03 | Phase 1 | Pending |
 | RFCT-04 | Phase 1 | Pending |
+| RFCT-05 | Phase 1 | Pending |
 | SEC-01 | Phase 4 | Pending |
 | SEC-02 | Phase 1 | Pending |
 | SEC-03 | Phase 1 | Pending |
@@ -164,8 +166,8 @@ Deferred to future release. Tracked but not in current roadmap.
 | TEST-04 | Phase 7 | Pending |
 
 **Coverage:**
-- v1 requirements: 47 total
-- Mapped to phases: 47
+- v1 requirements: 48 total
+- Mapped to phases: 48
 - Unmapped: 0 ✓
 
 ---

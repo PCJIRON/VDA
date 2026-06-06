@@ -1,4 +1,13 @@
+import logging
+
+import keyring
+
 from qwen_desktop.config.defaults import PROVIDERS
+
+logger = logging.getLogger(__name__)
+
+_KEYRING_SERVICE = "VDA-Desktop"
+_KEYRING_ACCOUNT = "api_key"
 
 
 class ProviderConfig:
@@ -13,6 +22,13 @@ class ProviderConfig:
         return PROVIDERS.get(provider_id, PROVIDERS["openrouter"])
 
     def get_api_key(self) -> str:
+        try:
+            keyring_key = keyring.get_password(_KEYRING_SERVICE, _KEYRING_ACCOUNT)
+            if keyring_key:
+                logger.debug("API key read from keyring")
+                return keyring_key
+        except Exception as e:
+            logger.debug(f"Keyring read failed: {e}")
         return self.settings.get("api_key", "")
 
     def get_model(self) -> str:
@@ -50,6 +66,12 @@ class ProviderConfig:
         self.settings.set("api_model", model)
         self.settings.set("api_base_url", base_url)
         self.settings.save()
+        if api_key:
+            try:
+                keyring.set_password(_KEYRING_SERVICE, _KEYRING_ACCOUNT, api_key)
+                logger.debug("API key saved to keyring")
+            except Exception as e:
+                logger.warning(f"Failed to save API key to keyring: {e}")
 
     @staticmethod
     def get_all_providers() -> dict[str, dict]:

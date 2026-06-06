@@ -33,7 +33,7 @@ class DesktopApp:
 
     def run(self) -> int:
         try:
-            from qwen_desktop.ui.floating_assistant import FloatingAssistant
+            from qwen_desktop.ui.assistant import FloatingAssistant
 
             self.floating_assistant = FloatingAssistant(self.settings)
             self.floating_assistant.show()

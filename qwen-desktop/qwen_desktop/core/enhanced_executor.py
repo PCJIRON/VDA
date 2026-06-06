@@ -1,16 +1,17 @@
 import json
-import re
 import logging
 import os
+import re
 import time
 from typing import Optional, Tuple
+
 import cv2
 import numpy as np
 import pyautogui
 
-logger = logging.getLogger(__name__)
+from qwen_desktop.utils.safety import restore_failsafe
 
-pyautogui.FAILSAFE = False
+logger = logging.getLogger(__name__)
 
 
 def detect_coordinate_range(x: float, y: float, screen_w: int, screen_h: int) -> str:
@@ -68,24 +69,25 @@ class ClickValidator:
     def click_and_verify(x: int, y: int, action: str = "click",
                          retries: int = 2) -> bool:
         for attempt in range(retries + 1):
-            try:
-                before = ClickValidator.capture_region(x, y)
-                if action == "click":
-                    pyautogui.click(x, y)
-                elif action == "double_click":
-                    pyautogui.doubleClick(x, y)
-                elif action == "right_click":
-                    pyautogui.rightClick(x, y)
-                else:
-                    pyautogui.click(x, y)
-                time.sleep(0.15)
-                after = ClickValidator.capture_region(x, y)
-                if ClickValidator.verify_pixel_change(before, after):
-                    return True
-                if attempt < retries:
-                    time.sleep(0.1)
-            except Exception as e:
-                logger.warning(f"Click attempt {attempt + 1} failed: {e}")
+            with restore_failsafe():
+                try:
+                    before = ClickValidator.capture_region(x, y)
+                    if action == "click":
+                        pyautogui.click(x, y)
+                    elif action == "double_click":
+                        pyautogui.doubleClick(x, y)
+                    elif action == "right_click":
+                        pyautogui.rightClick(x, y)
+                    else:
+                        pyautogui.click(x, y)
+                    time.sleep(0.15)
+                    after = ClickValidator.capture_region(x, y)
+                    if ClickValidator.verify_pixel_change(before, after):
+                        return True
+                    if attempt < retries:
+                        time.sleep(0.1)
+                except Exception as e:
+                    logger.warning(f"Click attempt {attempt + 1} failed: {e}")
         return False
 
 
