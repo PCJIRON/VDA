@@ -8,6 +8,7 @@ detection, and per-tool permission control.
 """
 
 from qwen_desktop.core.agent_manager.agent_manager import AgentManager, AgentState
+from qwen_desktop.core.agent_manager.agent_worker import AgentWorker
 from qwen_desktop.core.agent_manager.doom_detector import DoomLoopDetector, ToolCallRecord
 from qwen_desktop.core.agent_manager.permission_system import PermissionSystem, PermissionDecision
 from qwen_desktop.core.agent_manager.session_compactor import SessionCompactor
@@ -20,6 +21,7 @@ from qwen_desktop.core.agent_manager.sub_agent_delegator import (
 __all__ = [
     "AgentManager",
     "AgentState",
+    "AgentWorker",
     "DoomLoopDetector",
     "ToolCallRecord",
     "PermissionSystem",
