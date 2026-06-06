@@ -739,7 +739,7 @@ class SessionCompactor:
 | A4 | Per-tool overhead of lazy init (~50μs) is negligible in practice | Lazy Tool Loading | Low — init happens once, execution time dominates |
 | A5 | Estimating tokens as `char_count // 4` is accurate enough for compaction threshold | Session Compaction | Medium — rough heuristic. If false negatives (underestimate), compaction might trigger late. Still better than no checking. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Sub-agent tool registration lifecycle**
    - What we know: Sub-agents need scoped tool sets. The main AgentRegistry registers all tools.

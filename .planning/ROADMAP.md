@@ -52,15 +52,23 @@ Plans:
 **Depends on:** Phase 1 (refactored codebase)
 **Requirements:** AGNT-01, AGNT-02, AGNT-03, AGNT-04, AGNT-05, AGNT-06, GUI-06
 **Success Criteria** (what must be TRUE):
-  1. User issues a multi-step command ("find the Q3 report, update the chart, and email it") → agent creates spec → plans steps → executes each step → verifies result → iterates until done or max iterations hit
-  2. Agent detects 3+ identical consecutive tool calls, immediately pauses execution, and notifies user via chat message
-  3. Agent manager can spawn Web, Terminal, File, and Voice sub-agents, each with tools scoped to their domain; sub-agents execute autonomously and return results
-  4. Agent asks for user permission before executing tools flagged as sensitive (configurable per agent type via permission system)
-  5. Long conversations are automatically compacted (truncated/summarized) to avoid AI context window overflow
-  6. Tools are loaded lazily — only initialized when first used in a session, keeping startup fast
-  7. User can see agent's reasoning steps (plan → current step → verification result) in a dedicated UI section during task execution
-**Plans:** TBD
+   1. User issues a multi-step command ("find the Q3 report, update the chart, and email it") → agent creates spec → plans steps → executes each step → verifies result → iterates until done or max iterations hit
+   2. Agent detects 3+ identical consecutive tool calls, immediately pauses execution, and notifies user via chat message
+   3. Agent manager can spawn Web, Terminal, File, and Voice sub-agents, each with tools scoped to their domain; sub-agents execute autonomously and return results
+   4. Agent asks for user permission before executing tools flagged as sensitive (configurable per agent type via permission system)
+   5. Long conversations are automatically compacted (truncated/summarized) to avoid AI context window overflow
+   6. Tools are loaded lazily — only initialized when first used in a session, keeping startup fast
+   7. User can see agent's reasoning steps (plan → current step → verification result) in a dedicated UI section during task execution
+**Plans:** 4 plans across 4 waves
 **UI hint:** yes
+
+```
+Plans:
+- [ ] 02-01-PLAN.md — ToolRegistry + Tool skeletons + Config extension (Wave 1)
+- [ ] 02-02-PLAN.md — AgentManager + DoomDetector + PermissionSystem (Wave 2)
+- [ ] 02-03-PLAN.md — SubAgentDelegator + SessionCompactor (Wave 3)
+- [ ] 02-04-PLAN.md — AgentWorker + ThinkingPanel + FloatingAssistant integration (Wave 4)
+```
 
 ### Phase 3: Web Tools
 **Mode:** mvp
@@ -169,8 +177,8 @@ Phase 3    Phase 4    Phase 5    Phase 6              Phase 8 (GUI)
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Security | 0/4 | Not started (planned) | - |
-| 2. Agent Core | 0/0 | Not started | - |
+| 1. Foundation & Security | 4/4 | Shipped (PR pending on `shell`) | 2026-06-06 |
+| 2. Agent Core | 4/4 | Planned — checker-verified | 2026-06-06 |
 | 3. Web Tools | 0/0 | Not started | - |
 | 4. Terminal Tools | 0/0 | Not started | - |
 | 5. File Tools | 0/0 | Not started | - |
