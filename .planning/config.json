@@ -1,28 +1,47 @@
 {
-  "project": "Enhanced Vision Mode",
-  "version": "0.5.0",
-  "created": "2026-03-29",
+  "mode": "yolo",
+  "granularity": "fine",
+  "parallelization": true,
+  "commit_docs": true,
+  "model_profile": "inherit",
   "workflow": {
-    "mode": "interactive",
-    "auto_research": false,
-    "require_approvals": true
+    "research": true,
+    "plan_check": true,
+    "verifier": true,
+    "nyquist_validation": true,
+    "auto_advance": true
   },
-  "features": [
-    "Better Coordinate Detection",
-    "Multi-Step Automation",
-    "Auto-Execute Commands",
-    "Visual Feedback UI"
-  ],
-  "stack": {
-    "language": "Python 3.9+",
-    "gui": "PyQt6",
-    "computer_vision": "OpenCV",
-    "ocr": "pytesseract",
-    "automation": "PyAutoGUI"
+  "plan_review": {
+    "source_grounding": true
   },
-  "phases": {
-    "total": 3,
-    "current": 0,
-    "next": "plan-phase 1"
+  "ship": {
+    "pr_body_sections": [
+      {
+        "heading": "User Stories & Acceptance Criteria",
+        "enabled": true,
+        "source": "REQUIREMENTS.md ## User Stories || REQUIREMENTS.md ## Acceptance Criteria",
+        "fallback": "- Acceptance criteria are covered by the linked requirements and verification evidence."
+      },
+      {
+        "heading": "Risks & Dependencies",
+        "enabled": true,
+        "source": "PLAN.md ## Risks || PLAN.md ## Dependencies",
+        "fallback": "- No known high-risk rollout dependencies."
+      },
+      {
+        "heading": "Success Metrics & Release Criteria",
+        "enabled": true,
+        "source": "REQUIREMENTS.md ## Definition of Done || VERIFICATION.md ## Release Criteria",
+        "fallback": "- Release when automated verification and required manual checks pass."
+      },
+      {
+        "heading": "Stakeholder Review & Approval",
+        "enabled": true,
+        "template": "- Product owner approval pending for {phase_name}."
+      }
+    ]
+  },
+  "defaults": {
+    "resolve_model_ids": "omit"
   }
 }
