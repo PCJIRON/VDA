@@ -11,7 +11,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from qwen_desktop.core.tool_registry import get_registry
 
@@ -69,14 +69,7 @@ class SubAgentDelegator:
     preceding work, subtask, constraints, and available tool definitions.
     Tool calls are executed through the ToolRegistry within the sub-agent's
     allowed tool scope.
-
-    Attributes:
-        available_agent_types: Default agent types if config not available.
     """
-
-    available_agent_types: list[str] = field(
-        default_factory=lambda: ["main", "web", "terminal", "file", "voice"]
-    )
 
     def __init__(
         self,
@@ -95,6 +88,7 @@ class SubAgentDelegator:
         self.api_client = api_client
         self._registry = tool_registry or get_registry()
         self._settings = settings or {}
+        self._default_agent_types = ["main", "web", "terminal", "file", "voice"]
 
     async def spawn_and_execute(
         self, context: SubAgentContext
@@ -259,4 +253,4 @@ Respond with tool calls when needed. Return "TASK_COMPLETE" when finished."""
         agent_types = self._settings.get("agent_types", {})
         if agent_types:
             return list(agent_types.keys())
-        return list(self.available_agent_types)
+        return list(self._default_agent_types)
