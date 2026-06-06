@@ -1,166 +1,174 @@
-# Requirements Specification
+# Requirements: VDA — Voice-Driven Desktop Agent
 
-**Project:** Enhanced Vision Mode  
-**Version:** 0.5.0  
-**Date:** 2026-03-29  
+**Defined:** 2026-06-06
+**Core Value:** VDA must reliably turn a user's spoken or typed command into correct desktop actions — clicking the right things, typing the right text, running the right commands — without destroying user data or getting stuck in loops.
+
+## v1 Requirements
+
+Requirements for initial release. Each maps to roadmap phases.
+
+### Agent System
+
+- [ ] **AGNT-01**: Agent manager implements Antigravity-style loop (spec → plan → execute → verify → iterate) with max iteration limit
+- [ ] **AGNT-02**: Doom loop detection — detect 3+ identical consecutive tool calls, trigger pause/user notification
+- [ ] **AGNT-03**: Sub-agent delegation via task tool — manager spawns specialized agents with their own tool sets
+- [ ] **AGNT-04**: Permission system — allow/deny/ask per tool, configurable by agent type
+- [ ] **AGNT-05**: Session compaction — compress long conversation history to avoid context overflow
+- [ ] **AGNT-06**: Tool registry with lazy initialization — tools loaded only when first used
+
+### Web Tools
+
+- [ ] **WEB-01**: Web search via API (Google/Bing/DuckDuckGo)
+- [ ] **WEB-02**: Web page content fetch and markdown extraction
+- [ ] **WEB-03**: Web scrolling and crawling for multi-page data collection
+- [ ] **WEB-04**: Rate limiting and polite crawling (delay between requests)
+
+### Terminal Tools
+
+- [ ] **TERM-01**: PowerShell command execution with stdout/stderr capture
+- [ ] **TERM-02**: Windows CMD support
+- [ ] **TERM-03**: Cross-platform shell (bash on Linux/macOS)
+- [ ] **TERM-04**: Working directory tracking per session
+
+### File Tools
+
+- [ ] **FILE-01**: File read with multiple format support (text, code, structured data)
+- [ ] **FILE-02**: File write with safety checks (path validation, overwrite confirmation)
+- [ ] **FILE-03**: Glob-based file search
+- [ ] **FILE-04**: Grep-style content search across files
+
+### Voice System
+
+- [ ] **VOICE-01**: Push-to-talk microphone input capture (keyboard trigger in PyQt6)
+- [ ] **VOICE-02**: Speech-to-text via API or local model
+- [ ] **VOICE-03**: Multilingual text-to-speech response
+- [ ] **VOICE-04**: Voice activation UI indicator (recording/speaking/idle states)
+- [ ] **VOICE-05**: Interruptible TTS — new command stops current speech
+
+### Memory & Learning
+
+- [ ] **MEM-01**: Microsoft GraphRAG engine integration (local-only, file-based)
+- [ ] **MEM-02**: Short-term memory — session chat history stored in GraphRAG
+- [ ] **MEM-03**: Long-term memory — session data moved to persistent GraphRAG on session end
+- [ ] **MEM-04**: Memory retrieval — prioritize short-term, fall back to long-term
+- [ ] **MEM-05**: Daily user behavior cache — mouse/keyboard patterns stored as execution hints
+- [ ] **MEM-06**: Mistake memory — failed tool calls stored with context, retrieved to inform future decisions
+
+### Codebase Refactoring
+
+- [ ] **RFCT-01**: Consolidate 8 clicker implementations into single ClickerEngine with pluggable strategies
+- [ ] **RFCT-02**: Split `floating_assistant.py` (~1988 lines) into controller + chat widgets + action modules
+- [ ] **RFCT-03**: Deduplicate APIClient/ZenClient into shared base client
+- [ ] **RFCT-04**: Extract shared ScreenEnv/ScreenDetector into utils/screen.py
+
+### Security
+
+- [ ] **SEC-01**: Shell command approval dialog before execution (modal in PyQt6)
+- [ ] **SEC-02**: API key storage via OS keychain (keyring library)
+- [ ] **SEC-03**: Proper pyautogui.FAILSAFE restoration with try/finally guards
+- [ ] **SEC-04**: Command whitelist and path traversal prevention in ToolExecutor
+
+### GUI Redesign
+
+- [ ] **GUI-01**: Create DESIGN.md for VDA with YAML tokens (colors, typography, spacing, components) + markdown rationale
+- [ ] **GUI-02**: Modern floating assistant UI — clean chat bubbles, smooth animations, resizeable window
+- [ ] **GUI-03**: Dark/light theme toggle matching DESIGN.md token system
+- [ ] **GUI-04**: Tool execution visualization — show tool calls with real-time status (pending/running/done/error)
+- [ ] **GUI-05**: Voice controls — mic button, speaking indicator, voice activation status bar
+- [ ] **GUI-06**: Agent thinking visualization — show reasoning steps during complex tasks
+
+### Testing
+
+- [ ] **TEST-01**: Fix broken test suite (import non-existent modules)
+- [ ] **TEST-02**: Unit tests for agent manager and loop logic
+- [ ] **TEST-03**: Unit tests for web/terminal/file tools
+- [ ] **TEST-04**: Unit tests for GraphRAG memory integration
+
+## v2 Requirements
+
+Deferred to future release. Tracked but not in current roadmap.
+
+### Machine Learning
+
+- **ML-01**: Full reinforcement learning pipeline (reward modeling, policy training)
+- **ML-02**: Fine-tuned behavior predictions from daily usage patterns
+
+### Advanced Features
+
+- **ADV-01**: MCP protocol support for third-party tool integration
+- **ADV-02**: Wake-word activation (always-listening mode)
+- **ADV-03**: Multi-monitor DPI-aware automation improvements
+- **ADV-04**: Screen recording for replay/debugging
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Full RL training pipeline | Too complex for v1; memory-based learning first |
+| Web dashboard / API server | Desktop-only application |
+| Mobile app | Windows desktop primary target |
+| Cloud deployment | Fully local — no server infrastructure |
+| Third-party MCP protocol | Use native Python tools instead |
+| Browser extension | Desktop agent handles browser natively via vision |
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| AGNT-01 | Phase 1 | Pending |
+| AGNT-02 | Phase 1 | Pending |
+| AGNT-03 | Phase 2 | Pending |
+| AGNT-04 | Phase 1 | Pending |
+| AGNT-05 | Phase 2 | Pending |
+| AGNT-06 | Phase 1 | Pending |
+| WEB-01 | Phase 2 | Pending |
+| WEB-02 | Phase 2 | Pending |
+| WEB-03 | Phase 3 | Pending |
+| WEB-04 | Phase 2 | Pending |
+| TERM-01 | Phase 3 | Pending |
+| TERM-02 | Phase 3 | Pending |
+| TERM-03 | Phase 3 | Pending |
+| TERM-04 | Phase 3 | Pending |
+| FILE-01 | Phase 2 | Pending |
+| FILE-02 | Phase 2 | Pending |
+| FILE-03 | Phase 2 | Pending |
+| FILE-04 | Phase 2 | Pending |
+| VOICE-01 | Phase 4 | Pending |
+| VOICE-02 | Phase 4 | Pending |
+| VOICE-03 | Phase 4 | Pending |
+| VOICE-04 | Phase 4 | Pending |
+| VOICE-05 | Phase 4 | Pending |
+| MEM-01 | Phase 5 | Pending |
+| MEM-02 | Phase 5 | Pending |
+| MEM-03 | Phase 5 | Pending |
+| MEM-04 | Phase 5 | Pending |
+| MEM-05 | Phase 5 | Pending |
+| MEM-06 | Phase 5 | Pending |
+| RFCT-01 | Phase 1 | Pending |
+| RFCT-02 | Phase 1 | Pending |
+| RFCT-03 | Phase 1 | Pending |
+| RFCT-04 | Phase 1 | Pending |
+| SEC-01 | Phase 3 | Pending |
+| SEC-02 | Phase 1 | Pending |
+| SEC-03 | Phase 1 | Pending |
+| SEC-04 | Phase 2 | Pending |
+| GUI-01 | Phase 6 | Pending |
+| GUI-02 | Phase 6 | Pending |
+| GUI-03 | Phase 6 | Pending |
+| GUI-04 | Phase 6 | Pending |
+| GUI-05 | Phase 4 | Pending |
+| GUI-06 | Phase 1 | Pending |
+| TEST-01 | Phase 1 | Pending |
+| TEST-02 | Phase 1 | Pending |
+| TEST-03 | Phase 2 | Pending |
+| TEST-04 | Phase 5 | Pending |
+
+**Coverage:**
+- v1 requirements: 45 total
+- Mapped to phases: 45
+- Unmapped: 0 ✓
 
 ---
 
-## Functional Requirements
-
-### FR-1: Enhanced Coordinate Detection
-
-| ID | Requirement | Priority |
-|----|-------------|----------|
-| FR-1.1 | System shall detect UI elements using template matching | High |
-| FR-1.2 | System shall support OCR for text-based element detection | High |
-| FR-1.3 | System shall scale coordinates across different resolutions | High |
-| FR-1.4 | System shall support relative coordinates (0.0-1.0) | Medium |
-| FR-1.5 | System shall cache detected elements for 5 seconds | Low |
-
-**Acceptance Criteria:**
-- Template matching finds elements with >90% accuracy
-- OCR detects text in screenshots with >85% accuracy
-- Coordinates scale correctly between 1080p, 1440p, 4K displays
-- Relative coordinates work regardless of screen size
-
----
-
-### FR-2: Multi-Step Automation
-
-| ID | Requirement | Priority |
-|----|-------------|----------|
-| FR-2.1 | System shall chain 5+ PyAutoGUI commands | High |
-| FR-2.2 | System shall support wait conditions between steps | High |
-| FR-2.3 | System shall verify each step with screenshot | High |
-| FR-2.4 | System shall rollback on step failure | Medium |
-| FR-2.5 | System shall support loops and conditionals | Low |
-
-**Acceptance Criteria:**
-- Chain of 5 commands executes successfully
-- Wait for element appears/disappears works
-- Verification screenshot after each step
-- Rollback returns to initial state on failure
-
----
-
-### FR-3: Auto-Execute Commands
-
-| ID | Requirement | Priority |
-|----|-------------|----------|
-| FR-3.1 | System shall support 3 trust levels | High |
-| FR-3.2 | System shall whitelist safe commands | High |
-| FR-3.3 | System shall rate limit auto-execution | High |
-| FR-3.4 | System shall have emergency stop | High |
-| FR-3.5 | System shall log all auto-executions | Medium |
-
-**Trust Levels:**
-1. `ask_first` - Confirm every command (default)
-2. `auto_trusted` - Auto-execute whitelisted commands
-3. `full_auto` - Execute all commands (advanced users)
-
-**Whitelisted Commands:**
-- `pyautogui.moveTo()`, `click()`, `doubleClick()`
-- `pyautogui.typewrite()`, `press()`, `hotkey()`
-- `pyautogui.scroll()`
-
-**Acceptance Criteria:**
-- Trust level configurable in settings
-- Whitelist enforced in auto_trusted mode
-- Max 10 commands per minute in auto mode
-- Ctrl+Shift+Esc stops all automation
-
----
-
-### FR-4: Visual Feedback UI
-
-| ID | Requirement | Priority |
-|----|-------------|----------|
-| FR-4.1 | System shall highlight detected elements | High |
-| FR-4.2 | System shall show action preview | High |
-| FR-4.3 | System shall display execution progress | High |
-| FR-4.4 | System shall show toast notifications | Medium |
-| FR-4.5 | System shall support dark/light themes | Low |
-
-**Acceptance Criteria:**
-- Bounding box around detected elements (green = success, red = not found)
-- Preview shows what action will happen before execution
-- Progress bar during multi-step automation
-- Toast appears for completion/errors
-
----
-
-## Non-Functional Requirements
-
-### NFR-1: Performance
-
-| ID | Requirement |
-|----|-------------|
-| NFR-1.1 | Element detection shall complete in <500ms |
-| NFR-1.2 | Multi-step automation shall not block UI |
-| NFR-1.3 | Visual overlay shall render at 60 FPS |
-
-### NFR-2: Security
-
-| ID | Requirement |
-|----|-------------|
-| NFR-2.1 | Auto-execute shall require explicit user consent |
-| NFR-2.2 | Dangerous commands (exec, eval) shall be blocked |
-| NFR-2.3 | All automation shall be logged for audit |
-
-### NFR-3: Usability
-
-| ID | Requirement |
-|----|-------------|
-| NFR-3.1 | Visual feedback shall not obstruct workflow |
-| NFR-3.2 | Settings shall be accessible via UI |
-| NFR-3.3 | Error messages shall suggest fixes |
-
-### NFR-4: Compatibility
-
-| ID | Requirement |
-|----|-------------|
-| NFR-4.1 | Windows 10/11 support |
-| NFR-4.2 | macOS 11+ support |
-| NFR-4.3 | Linux (Ubuntu 20.04+) support |
-| NFR-4.4 | Python 3.9, 3.10, 3.11, 3.12 |
-
----
-
-## Technical Requirements
-
-### TR-1: Architecture
-
-| ID | Requirement |
-|----|-------------|
-| TR-1.1 | New modules shall be separate from existing code |
-| TR-1.2 | Computer vision shall run in background thread |
-| TR-1.3 | Visual overlay shall be non-blocking |
-
-### TR-2: Code Quality
-
-| ID | Requirement |
-|----|-------------|
-| TR-2.1 | Type hints for all functions |
-| TR-2.2 | Docstrings for public APIs |
-| TR-2.3 | Unit tests for new modules |
-| TR-2.4 | PEP 8 compliance |
-
----
-
-## Out of Scope (v0.5.0)
-
-- Voice control
-- Screen recording
-- Remote desktop support
-- AI-powered element recognition (beyond template/OCR)
-- Cross-platform automation scripts
-
----
-
-## Future Considerations
-
-1. **AI Element Recognition** - Use ML models for smarter detection
-2. **Script Recording** - Record and replay automation sequences
-3. **Cloud Sync** - Share automation scripts across devices
-4. **Collaboration** - Share templates and OCR patterns
+*Requirements defined: 2026-06-06*
+*Last updated: 2026-06-06 after initial definition*
