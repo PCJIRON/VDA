@@ -138,6 +138,15 @@ None — all deviations were test assertion corrections discovered during verifi
 - DoomLoopDetector and PermissionSystem are fully wired in AgentManager constructor
 - All 41 tests pass — solid baseline for extending
 
+## Self-Check: PASSED
+
+- [x] All 7 created files exist on disk
+- [x] 4 commits recorded (3 feat + 1 docs)
+- [x] 41 tests pass across 3 test files
+- [x] AgentManager state machine with full lifecycle verified via unit tests
+- [x] DoomLoopDetector detects 3+ identical calls, allows polling false positives
+- [x] PermissionSystem returns correct allow/deny/ask based on tool type and agent_type scope
+
 ---
 
 *Phase: 02-agent-core*
