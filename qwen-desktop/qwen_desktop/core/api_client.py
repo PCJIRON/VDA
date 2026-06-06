@@ -92,7 +92,20 @@ class APIClient:
                 messages.insert(0, {"role": "system", "content": self._get_system_prompt()})
 
         user_content: List[Dict[str, Any]] = []
-        user_content.append({"type": "text", "text": message})
+        if isinstance(message, list):
+            user_content = list(message)
+        else:
+            user_content.append({"type": "text", "text": str(message)})
+
+        # Find first text block for potential file attachments
+        text_block = None
+        for block in user_content:
+            if block.get("type") == "text":
+                text_block = block
+                break
+        if text_block is None:
+            text_block = {"type": "text", "text": ""}
+            user_content.insert(0, text_block)
 
         if attachments:
             for att in attachments:
@@ -107,7 +120,7 @@ class APIClient:
                 elif att.get("type") == "file":
                     doc_text = att.get("content", "")
                     fname = att.get("name", "file")
-                    user_content[0]["text"] += f"\n\n<document path='{fname}'>\n{doc_text}\n</document>"
+                    text_block["text"] += f"\n\n<document path='{fname}'>\n{doc_text}\n</document>"
 
         messages.append({"role": "user", "content": user_content})
 

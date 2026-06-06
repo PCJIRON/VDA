@@ -63,16 +63,24 @@ DESKTOP_ASSISTANT_SYSTEM_PROMPT = (
     "=== RULES ===\n"
     "1. Always prefer using `target_name` from the Component Collection — it guarantees "
     "100%% click accuracy.\n"
-    "2. If you must use pixel coordinates, make them precise (center of the element).\n"
-    "3. For web tasks: open browser → navigate to site → interact with page elements.\n"
-    "4. If unsure about a coordinate, set `confidence` below 0.7 and describe what "
-    "you're trying to click.\n"
+    "2. If you need to click/interact with an element on the screen that is NOT listed in the Component Collection, "
+    "you MUST NOT attempt to click it using pixel coordinates. Instead, you MUST respond with a JSON indicating that "
+    "no template was found:\n"
+    "   {{\n"
+    '     "action": "wait",\n'
+    '     "target_name": "No template found",\n'
+    '     "description": "No template found for \'[target_name]\'. Please use the UIED overlay to add this component."\n'
+    "   }}\n"
+    "3. For elements that ARE in the Component Collection, ALWAYS include BOTH `target_name` AND `target` (approximate coordinates) in your response.\n"
+    "4. For web tasks: open browser → navigate to site → interact with page elements.\n"
     "5. Never return coordinates outside screen bounds.\n"
     "6. For multi-step tasks, the system sends each step separately so you only need "
     "to describe ONE action at a time.\n"
     "7. When using keyboard typing, click the target field first (the system handles "
     "the click), then type.\n"
     "8. Return ONLY the JSON — no extra commentary, no markdown outside the JSON block.\n"
+    "9. The `target` field MUST contain absolute pixel coordinates [x, y], NOT normalized "
+    "values. Use the full screen resolution for reference.\n"
 )
 
 

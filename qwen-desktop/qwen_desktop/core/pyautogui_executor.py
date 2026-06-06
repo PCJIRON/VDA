@@ -209,14 +209,15 @@ class PyAutoGUIExecutor:
     def find_with_template(
         self,
         template_path: str,
-        threshold: float = 0.7,  # Lowered from 0.9 for better matching
+        threshold: float = 0.55,  # Lowered for robust multi-scale matching
         screen_resolution: Tuple[int, int] = None
     ) -> Optional[Tuple[int, int]]:
         """
-        Find element on screen using template matching.
+        Find element on screen using multi-scale template matching.
 
-        This provides 100% accurate coordinates by matching a saved template
-        against the current screen.
+        Tries matching at multiple scales (0.7x to 1.3x) to handle DPI
+        mismatches between Qt grabWindow (physical pixels) and pyautogui
+        screenshot output.
 
         Args:
             template_path: Path to the template image.
@@ -234,12 +235,12 @@ class PyAutoGUIExecutor:
 
         try:
             # Load template
-            template = cv2.imread(template_path, cv2.IMREAD_GRAYSCALE)
-            if template is None:
+            template_orig = cv2.imread(template_path, cv2.IMREAD_GRAYSCALE)
+            if template_orig is None:
                 logger.warning(f"[TemplateMatch] Failed to load template: {template_path}")
                 return None
             
-            logger.info(f"[TemplateMatch] Template size: {template.shape}")
+            logger.info(f"[TemplateMatch] Template size: {template_orig.shape}")
 
             # Capture current screen
             screenshot = pyautogui.screenshot()
@@ -248,33 +249,73 @@ class PyAutoGUIExecutor:
             
             logger.info(f"[TemplateMatch] Screen size: {screenshot_gray.shape}")
 
-            # Template matching
-            result = cv2.matchTemplate(screenshot_gray, template, cv2.TM_CCOEFF_NORMED)
-            locations = np.where(result >= threshold)
+            # Determine DPI ratio for intelligent scale selection
+            dpr = 1.0
+            try:
+                from PyQt6.QtWidgets import QApplication
+                app = QApplication.instance()
+                if app:
+                    screen = app.primaryScreen()
+                    if screen:
+                        dpr = screen.devicePixelRatio()
+            except Exception:
+                pass
+
+            # Multi-scale template matching
+            # Primary scales: 1.0x (same resolution), 1/dpr (physical→logical), dpr (logical→physical)
+            # Additional scales around those for robustness
+            scales_set = set()
+            for base_scale in [1.0, 1.0 / dpr if dpr > 1.0 else 1.0, dpr if dpr > 1.0 else 1.0]:
+                for delta in [-0.15, -0.05, 0.0, 0.05, 0.15]:
+                    s = round(base_scale + delta, 2)
+                    if 0.4 <= s <= 2.0:
+                        scales_set.add(s)
+            scales = sorted(scales_set)
             
-            logger.info(f"[TemplateMatch] Locations found: {len(locations[0])} (threshold: {threshold})")
+            logger.info(f"[TemplateMatch] DPR={dpr}, trying {len(scales)} scales: {scales}")
 
-            if len(locations[0]) > 0:
-                # Get best match
-                best_match_idx = np.argmax(result[locations])
-                top_left_y = locations[0][best_match_idx]
-                top_left_x = locations[1][best_match_idx]
+            best_score = -1.0
+            best_location = None
+            best_scale = None
+            best_template_shape = None
+
+            for scale in scales:
+                h_orig, w_orig = template_orig.shape[:2]
+                new_w = max(1, int(w_orig * scale))
+                new_h = max(1, int(h_orig * scale))
                 
-                max_confidence = float(result[locations][best_match_idx])
+                # Skip if template is too large for the screenshot
+                if new_w >= screenshot_gray.shape[1] or new_h >= screenshot_gray.shape[0]:
+                    continue
+                # Skip if template is too small to be meaningful
+                if new_w < 8 or new_h < 8:
+                    continue
 
-                # Calculate center
-                h, w = template.shape
-                center_x = int(top_left_x + w / 2)
-                center_y = int(top_left_y + h / 2)
+                if scale == 1.0:
+                    template_scaled = template_orig
+                else:
+                    template_scaled = cv2.resize(template_orig, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
-                logger.info(f"[TemplateMatch] ✅ Match found: ({center_x}, {center_y}) with {max_confidence:.2f} confidence")
+                result = cv2.matchTemplate(screenshot_gray, template_scaled, cv2.TM_CCOEFF_NORMED)
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
 
+                if max_val > best_score:
+                    best_score = max_val
+                    best_location = max_loc
+                    best_scale = scale
+                    best_template_shape = template_scaled.shape
+
+            logger.info(f"[TemplateMatch] Best match: score={best_score:.3f} at {best_location} scale={best_scale}")
+
+            if best_score >= threshold and best_location is not None and best_template_shape is not None:
+                h, w = best_template_shape[:2]
+                center_x = int(best_location[0] + w / 2)
+                center_y = int(best_location[1] + h / 2)
+
+                logger.info(f"[TemplateMatch] ✅ Match found: ({center_x}, {center_y}) with {best_score:.3f} confidence at scale {best_scale}")
                 return (center_x, center_y)
             else:
-                # Log best match even if below threshold
-                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-                logger.info(f"[TemplateMatch] ❌ No match above threshold. Best: {max_val:.2f} at {max_loc}")
-                logger.debug(f"[TemplateMatch] Locations: {locations}")
+                logger.info(f"[TemplateMatch] ❌ No match above threshold {threshold}. Best: {best_score:.3f} at {best_location} scale={best_scale}")
                 return None
 
         except Exception as e:

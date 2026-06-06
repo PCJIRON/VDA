@@ -183,8 +183,8 @@ class LabelEditorDialog(QDialog):
         new_label = self.label_input.text().strip()
         new_type = self.type_combo.currentText()
         if new_label:
+            self.accept()  # ✅ Close dialog FIRST so it's not in the screenshot
             self.label_saved.emit(new_label, new_type)
-            self.accept()
 
 
 class DraggableToolbar(QWidget):
@@ -709,42 +709,45 @@ class UIEDOverlayWidget(QWidget):
         comp['center_x'] = new_x + comp['width'] // 2
         comp['center_y'] = new_y + comp['height'] // 2
         
-        # ✅ CRITICAL: Recapture template using Qt grabWindow (same coordinate system)
+        # ✅ CRITICAL: Recapture template using pyautogui (same source as template matching)
         try:
-            from PyQt6.QtWidgets import QApplication
-            from PyQt6.QtCore import QBuffer, QIODevice
-            from PIL import Image
             import cv2
             import numpy as np
-            import io
+            import pyautogui as _pag
+            from PyQt6.QtWidgets import QApplication
             
             # ✅ Hide overlay BEFORE capturing to avoid capturing the box/toolbar
             self.hide()
             QApplication.processEvents()
             import time
-            time.sleep(0.05)
+            time.sleep(0.15)
             
-            # Use Qt's grabWindow - NO DPI scaling issues!
+            # Use pyautogui screenshot + crop (matches find_with_template source)
+            screenshot = _pag.screenshot()
+            screenshot_np = np.array(screenshot)
+            img_h, img_w = screenshot_np.shape[:2]
+            
+            # Scale Qt logical coords to screenshot pixel coords (use geometry() = full screen)
             screen = QApplication.primaryScreen()
-            pixmap = screen.grabWindow(0, new_x, new_y, comp['width'], comp['height'])
+            geom = screen.geometry()
+            scale_x = img_w / geom.width()
+            scale_y = img_h / geom.height()
+            
+            crop_x1 = max(0, int(new_x * scale_x))
+            crop_y1 = max(0, int(new_y * scale_y))
+            crop_x2 = min(img_w, int((new_x + comp['width']) * scale_x))
+            crop_y2 = min(img_h, int((new_y + comp['height']) * scale_y))
+            
+            template_rgb = screenshot_np[crop_y1:crop_y2, crop_x1:crop_x2]
+            if template_rgb.size > 0:
+                template_bgr = cv2.cvtColor(template_rgb, cv2.COLOR_RGB2BGR)
+                comp['_template_rgb'] = template_bgr
+                comp['_template_gray'] = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2GRAY)
+                logger.debug(f"Template recaptured at ({new_x}, {new_y}) {template_bgr.shape}")
             
             # ✅ Show overlay again AFTER capturing
             self.show()
             QApplication.processEvents()
-            
-            if not pixmap.isNull():
-                # Convert QPixmap to OpenCV format
-                buffer = QBuffer()
-                buffer.open(QIODevice.OpenModeFlag.ReadWrite)
-                pixmap.save(buffer, "PNG")
-                
-                img = Image.open(io.BytesIO(bytes(buffer.data())))
-                template_rgb = np.array(img)
-                template_bgr = cv2.cvtColor(template_rgb, cv2.COLOR_RGB2BGR)
-                
-                comp['_template_rgb'] = template_bgr
-                comp['_template_gray'] = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2GRAY)
-                logger.debug(f"Template recaptured at ({new_x}, {new_y}) {template_bgr.shape}")
                 
         except Exception as e:
             logger.error(f"Failed to recapture template during drag: {e}")
@@ -781,42 +784,45 @@ class UIEDOverlayWidget(QWidget):
         comp['center_x'] = comp['x'] + comp['width'] // 2
         comp['center_y'] = comp['y'] + comp['height'] // 2
         
-        # ✅ CRITICAL: Recapture template using Qt grabWindow
+        # ✅ CRITICAL: Recapture template using pyautogui (same source as template matching)
         try:
-            from PyQt6.QtWidgets import QApplication
-            from PyQt6.QtCore import QBuffer, QIODevice
-            from PIL import Image
             import cv2
             import numpy as np
-            import io
+            import pyautogui as _pag
+            from PyQt6.QtWidgets import QApplication
             
             # ✅ Hide overlay BEFORE capturing to avoid capturing the box/toolbar
             self.hide()
             QApplication.processEvents()
             import time
-            time.sleep(0.05)
+            time.sleep(0.15)
             
-            # Use Qt's grabWindow - NO DPI scaling issues!
+            # Use pyautogui screenshot + crop (matches find_with_template source)
+            screenshot = _pag.screenshot()
+            screenshot_np = np.array(screenshot)
+            img_h, img_w = screenshot_np.shape[:2]
+            
+            # Scale Qt logical coords to screenshot pixel coords (use geometry() = full screen)
             screen = QApplication.primaryScreen()
-            pixmap = screen.grabWindow(0, comp['x'], comp['y'], comp['width'], comp['height'])
+            geom = screen.geometry()
+            scale_x = img_w / geom.width()
+            scale_y = img_h / geom.height()
+            
+            crop_x1 = max(0, int(comp['x'] * scale_x))
+            crop_y1 = max(0, int(comp['y'] * scale_y))
+            crop_x2 = min(img_w, int((comp['x'] + comp['width']) * scale_x))
+            crop_y2 = min(img_h, int((comp['y'] + comp['height']) * scale_y))
+            
+            template_rgb = screenshot_np[crop_y1:crop_y2, crop_x1:crop_x2]
+            if template_rgb.size > 0:
+                template_bgr = cv2.cvtColor(template_rgb, cv2.COLOR_RGB2BGR)
+                comp['_template_rgb'] = template_bgr
+                comp['_template_gray'] = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2GRAY)
+                logger.debug(f"Template recaptured at ({comp['x']}, {comp['y']}) {comp['width']}x{comp['height']} {template_bgr.shape}")
             
             # ✅ Show overlay again AFTER capturing
             self.show()
             QApplication.processEvents()
-            
-            if not pixmap.isNull():
-                # Convert QPixmap to OpenCV format
-                buffer = QBuffer()
-                buffer.open(QIODevice.OpenModeFlag.ReadWrite)
-                pixmap.save(buffer, "PNG")
-                
-                img = Image.open(io.BytesIO(bytes(buffer.data())))
-                template_rgb = np.array(img)
-                template_bgr = cv2.cvtColor(template_rgb, cv2.COLOR_RGB2BGR)
-                
-                comp['_template_rgb'] = template_bgr
-                comp['_template_gray'] = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2GRAY)
-                logger.debug(f"Template recaptured at ({comp['x']}, {comp['y']}) {comp['width']}x{comp['height']} {template_bgr.shape}")
                 
         except Exception as e:
             logger.error(f"Failed to recapture template during resize: {e}")

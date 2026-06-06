@@ -195,7 +195,30 @@ class MessageBubble(QWidget):
         time_str = datetime.datetime.now().strftime("%I:%M %p")
         time_lbl = QLabel(time_str)
         time_lbl.setStyleSheet(f"font-size: 10px; background: transparent; border: none; color: {'rgba(255,255,255,0.7)' if sender=='user' else '#6b7280'};")
-        self.frame_layout.addWidget(time_lbl)
+
+        footer_layout = QHBoxLayout()
+        footer_layout.setContentsMargins(0, 0, 0, 0)
+        footer_layout.addWidget(time_lbl)
+        footer_layout.addStretch()
+
+        self.copy_btn = QPushButton("Copy")
+        self.copy_btn.setFixedSize(50, 18)
+        self.copy_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {'rgba(255,255,255,0.8)' if sender == 'user' else '#2563eb'};
+                border: none;
+                font-size: 10px;
+                font-weight: bold;
+                text-align: right;
+            }}
+            QPushButton:hover {{ text-decoration: underline; }}
+        """)
+        self.copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.copy_btn.clicked.connect(self._copy_text)
+        footer_layout.addWidget(self.copy_btn)
+
+        self.frame_layout.addLayout(footer_layout)
 
         outer_layout = QHBoxLayout()
         outer_layout.setContentsMargins(0, 0, 0, 0)
@@ -207,6 +230,13 @@ class MessageBubble(QWidget):
             outer_layout.addStretch()
 
         self.layout.addLayout(outer_layout)
+
+    def _copy_text(self):
+        from PyQt6.QtWidgets import QApplication
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.msg_lbl.text())
+        self.copy_btn.setText("Copied!")
+        QTimer.singleShot(1500, lambda: self.copy_btn.setText("Copy"))
 
     def update_text(self, new_text: str):
         self.msg_lbl.setText(new_text)
@@ -1065,15 +1095,72 @@ class FloatingAssistant(QWidget):
         else:
             QTimer.singleShot(400, lambda: self.history_popup.add_message("Please configure API key in Settings first.", "ai"))
 
+    def _load_saved_templates_as_components(self) -> list:
+        import os
+        template_dir = os.path.join(
+            os.path.expanduser("~"),
+            ".qwen_desktop",
+            "uied_templates"
+        )
+        if not os.path.exists(template_dir):
+            return []
+        
+        components = []
+        try:
+            template_files = [f for f in os.listdir(template_dir) if f.endswith('.png')]
+            for f in template_files:
+                name_without_ext = f.replace('.png', '')
+                parts = name_without_ext.split('_')
+                
+                # Determine component type
+                comp_type = "other"
+                if len(parts) > 1:
+                    possible_type = parts[-1].lower()
+                    if possible_type in ['icon', 'button', 'text', 'input', 'checkbox', 'logo', 'other']:
+                        comp_type = possible_type
+                        parts = parts[:-1]
+                
+                # Remove ID prefix
+                start_idx = 0
+                while start_idx < len(parts):
+                    p = parts[start_idx].lower()
+                    if p in ['comp', 'user'] or (p.isalnum() and any(c.isdigit() for c in p)):
+                        start_idx += 1
+                    else:
+                        break
+                
+                label_parts = parts[start_idx:]
+                if not label_parts:
+                    label = " ".join(parts)
+                else:
+                    label = " ".join(label_parts)
+                
+                label = label.replace('_', ' ').replace('-', ' ').strip()
+                
+                components.append({
+                    "label": label,
+                    "component_type": comp_type,
+                    "x": "unknown",
+                    "y": "unknown"
+                })
+        except Exception as e:
+            logger.error(f"Error loading saved templates: {e}", exc_info=True)
+            
+        return components
+
     def _build_history_with_prompt(self, history: list) -> list:
         try:
             import pyautogui
             sw, sh = pyautogui.size()
         except Exception:
             sw, sh = 1920, 1080
+        
+        saved_components = self._load_saved_templates_as_components()
+        components = saved_components + self._uied_components if self._uied_components else saved_components
+        
         prompt = build_system_prompt(
             screen_width=sw, screen_height=sh,
-            components=self._uied_components,
+            components=components,
         )
         has_system = any(m.get("role") == "system" for m in history)
         if not has_system:
@@ -1107,25 +1194,22 @@ class FloatingAssistant(QWidget):
                 logger.info(f"Vision screenshot: {img_w}x{img_h} -> Screen: {sw}x{sh}")
 
                 vision_prompt = f"""
-[VISION TASK]
-Find this element: "{text if text else 'the element near mouse cursor'}"
+[USER REQUEST]
+"{text if text else 'Interact with the element near the mouse cursor'}"
 
 Current mouse position: ({mx}, {my}) on {sw}x{sh} screen
 
 [OUTPUT FORMAT - CRITICAL]
 Respond ONLY in this JSON format:
 {{
-    "action": "click",
-    "target_normalized": [0.0-1.0, 0.0-1.0],
-    "confidence": 0.95,
-    "description": "What you found"
+  "action": "click",
+  "target_name": "target name from the Component Collection, or 'No template found'",
+  "target": [x, y],
+  "confidence": 0.95,
+  "description": "Brief description of what you found"
 }}
 
-target_normalized[0] = x / {img_w} (0.0 = left edge, 1.0 = right edge)
-target_normalized[1] = y / {img_h} (0.0 = top edge, 1.0 = bottom edge)
-
-Be PRECISE - center of element. Example:
-{{"action": "click", "target_normalized": [0.365, 0.898], "confidence": 0.95}}
+The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{sh} screen.
 """
                 content_payload = [
                     {"type": "text", "text": vision_prompt},
@@ -1179,7 +1263,7 @@ Be PRECISE - center of element. Example:
         except Exception as e:
             logger.error(f"[UI] _on_api_finished error: {e}", exc_info=True)
 
-        if '"action"' in full_text and ('"target_name"' in full_text or '"description"' in full_text):
+        if '\"action\"' in full_text and ('\"target_name\"' in full_text or '\"description\"' in full_text or '\"target\"' in full_text):
             logger.info("LLM returned action with target - triggering UIED execution")
             QTimer.singleShot(500, lambda: self._execute_uied_from_llm(full_text))
 
@@ -1200,9 +1284,19 @@ Be PRECISE - center of element. Example:
             action = action_data.get('action', 'click')
             target_name = action_data.get('target_name', '')
             description = action_data.get('description', '')
+            
+            # Extract coordinates and confidence if present
+            target = action_data.get('target') or action_data.get('target_normalized')
+            confidence = action_data.get('confidence', 1.0)
 
             logger.info(f"UIED-LLM: Parsed JSON: {action_data}")
             logger.info(f"UIED-LLM: Action={action}, Target={target_name}, Desc={description}")
+
+            # If the action is wait, just log, show message, and return
+            if action == 'wait':
+                logger.info("UIED-LLM: Action is wait. Doing nothing.")
+                self.history_popup.add_message(f"Waiting: {description}", "ai")
+                return
 
             if not target_name and description:
                 match = re.search(r'Found ([A-Za-z0-9\s\-_]+?)(?:\s+(?:icon|button|logo|text|element|in|at|on|the|a))', description, re.IGNORECASE)
@@ -1214,45 +1308,28 @@ Be PRECISE - center of element. Example:
                     target_name = ' '.join(words).replace('"', '').replace("'", '')[:30]
                     logger.info(f"UIED-LLM: Fallback target: '{target_name}'")
 
-            if not target_name:
-                logger.warning("UIED-LLM: No target_name in response")
-                self.history_popup.add_message(
-                    "LLM didn't identify a specific target. Please be more specific.",
-                    "ai"
-                )
-                return
-
-            self.history_popup.add_message(
-                f"Finding '{target_name}' on screen...",
-                "ai"
-            )
-
-            template_path = self._find_uied_template_for_target(target_name)
-
-            if not template_path:
-                logger.warning(f"UIED-LLM: No template found for '{target_name}'")
-                self.history_popup.add_message(
-                    f"'{target_name}' not found in detected components.\n"
-                    f"Click UIED button to scan screen first.",
-                    "ai"
-                )
-                return
-
-            logger.info(f"UIED-LLM: Found template: {template_path}")
-            coords = self._pyautogui_executor.find_with_template(template_path, threshold=0.7)
+            # Try OpenCV template matching using manual templates from UIED first
+            coords = None
+            if target_name:
+                template_path = self._find_uied_template_for_target(target_name)
+                if template_path:
+                    logger.info(f"UIED-LLM: Found template: {template_path}")
+                    coords = self._pyautogui_executor.find_with_template(template_path, threshold=0.7)
+                else:
+                    logger.warning(f"UIED-LLM: No manual template found for '{target_name}'")
 
             if coords:
                 cx, cy = coords
                 logger.info(f"UIED-LLM: Match found at ({cx}, {cy})")
                 self.history_popup.add_message(
-                    f"Found '{target_name}' at ({cx}, {cy})\nExecuting: {action}",
+                    f"Found '{target_name}' at ({cx}, {cy}) via template matching.\nExecuting: {action}",
                     "ai"
                 )
                 self._execute_uied_action(action, cx, cy, {'label': target_name})
             else:
+                logger.warning(f"UIED-LLM: Template matching failed or template not found for '{target_name}'")
                 self.history_popup.add_message(
-                    f"Could not locate '{target_name}' on current screen.\n"
-                    f"The screen may have changed.",
+                    f"Template not found or not visible on screen for '{target_name}'. No action executed.",
                     "ai"
                 )
 
@@ -1416,20 +1493,17 @@ Be PRECISE - center of element. Example:
                 else:
                     logger.error("No screen resolution stored! Using normalized coords as-is")
         else:
-            if hasattr(self, '_last_screenshot_size') and hasattr(self, '_last_screen_resolution'):
-                img_w, img_h = self._last_screenshot_size
-                screen_w, screen_h = self._last_screen_resolution
-
-                scale_x = screen_w / img_w
-                scale_y = screen_h / img_h
-
-                real_x = int(model_x * scale_x)
-                real_y = int(model_y * scale_y)
-
-                logger.info(f"Scaling coords: [{model_x}, {model_y}] (image {img_w}x{img_h}) -> [{real_x}, {real_y}] (screen {screen_w}x{screen_h})")
-                target = [real_x, real_y]
-            else:
-                logger.warning("No sizing info, using pixel coords as-is")
+            # Absolute pixel coordinates from LLM - use directly
+            # The system prompt tells LLM the screen resolution, so coords are in screen space
+            import pyautogui
+            screen_w, screen_h = pyautogui.size()
+            
+            # Clamp to screen bounds
+            real_x = max(0, min(int(model_x), screen_w - 1))
+            real_y = max(0, min(int(model_y), screen_h - 1))
+            
+            logger.info(f"Absolute pixel coords: [{model_x}, {model_y}] -> [{real_x}, {real_y}] (screen {screen_w}x{screen_h})")
+            target = [real_x, real_y]
 
         if confidence < 0.7:
             self.history_popup.add_message(
@@ -1637,35 +1711,52 @@ Be PRECISE - center of element. Example:
                 QApplication.processEvents()
 
             import time
-            time.sleep(0.05)
+            time.sleep(0.3)  # Wait for overlay to fully disappear
 
+            # Use pyautogui.screenshot() + crop instead of Qt grabWindow
+            # This ensures the template matches what find_with_template uses
+            import pyautogui as _pag
+            screenshot = _pag.screenshot()
+            screenshot_np = np.array(screenshot)
+
+            # pyautogui gives us physical-pixel coordinates
+            screen_w_phys, screen_h_phys = _pag.size()
+            img_h, img_w = screenshot_np.shape[:2]
+
+            # Get Qt logical screen geometry (geometry() = full screen inc. taskbar)
             screen = QApplication.primaryScreen()
-            pixmap = screen.grabWindow(0, x, y, w, h)
+            geom = screen.geometry()
+            qt_screen_w = geom.width()
+            qt_screen_h = geom.height()
+
+            # Scale Qt logical coords to screenshot pixel coords
+            scale_x = img_w / qt_screen_w
+            scale_y = img_h / qt_screen_h
+
+            crop_x1 = max(0, int(x * scale_x))
+            crop_y1 = max(0, int(y * scale_y))
+            crop_x2 = min(img_w, int((x + w) * scale_x))
+            crop_y2 = min(img_h, int((y + h) * scale_y))
+
+            logger.info(f"Template crop: Qt({x},{y},{w},{h}) -> Pixel({crop_x1},{crop_y1},{crop_x2-crop_x1},{crop_y2-crop_y1}) scale=({scale_x:.2f},{scale_y:.2f})")
+
+            template_rgb = screenshot_np[crop_y1:crop_y2, crop_x1:crop_x2]
+            template_bgr = cv2.cvtColor(template_rgb, cv2.COLOR_RGB2BGR)
 
             if self._uied_overlay:
                 self._uied_overlay.show()
                 QApplication.processEvents()
 
-            if pixmap.isNull():
-                logger.error("grabWindow returned null pixmap")
+            if template_bgr.size == 0:
+                logger.error("Template crop is empty!")
                 return
-
-            logger.info(f"Pixmap size: {pixmap.width()}x{pixmap.height()}")
-
-            buffer = QBuffer()
-            buffer.open(QIODevice.OpenModeFlag.ReadWrite)
-            pixmap.save(buffer, "PNG")
-
-            img = Image.open(io.BytesIO(bytes(buffer.data())))
-            template_rgb = np.array(img)
-            template_bgr = cv2.cvtColor(template_rgb, cv2.COLOR_RGB2BGR)
 
             logger.info(f"Template captured: {template_bgr.shape}")
 
             new_component['_template_rgb'] = template_bgr
             new_component['_template_gray'] = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2GRAY)
 
-            logger.info(f"Template captured successfully using Qt grabWindow")
+            logger.info(f"Template captured successfully using pyautogui screenshot + crop")
 
         except Exception as e:
             logger.error(f"Failed to capture template: {e}", exc_info=True)
