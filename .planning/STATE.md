@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 current_phase: Phase 1 (Foundation & Security)
-status: unknown
-last_updated: "2026-06-06T22:45:00.000Z"
+status: "Phase 1 shipped — PR pending on branch `shell`"
+last_updated: "2026-06-06T23:15:00.000Z"
 progress:
   total_phases: 8
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
   completed_plans: 4
   percent: 25
@@ -17,7 +17,7 @@ progress:
 
 **Last Updated:** 2026-06-06
 **Current Phase:** Phase 1 (Foundation & Security)
-**Current Status:** RFCT-01-04 ✅, RFCT-05 partially ✅ (5 largest files split), TEST-01 ✅ (64/64 passing)
+**Current Status:** SHIPPED — PR pending on branch `shell`
 
 ---
 
@@ -38,7 +38,7 @@ progress:
 
 | Phase | Goal | Status |
 |-------|------|--------|
-| 1. Foundation & Security | Refactor codebase, fix tests, secure key storage and FAILSAFE | In progress (refactoring done) |
+| 1. Foundation & Security | Refactor codebase, fix tests, secure key storage and FAILSAFE | Shipped (PR pending on `shell`) |
 | 2. Agent Core | Agent manager with loop, sub-agents, doom detection, permissions | Not started |
 | 3. Web Tools | Web search, fetch, crawl | Not started |
 | 4. Terminal Tools | PowerSHell, CMD, cross-platform shell with approval | Not started |
@@ -100,6 +100,7 @@ Phase 1 [########] 80% — Refactoring done, 5 largest files split, tests passin
 | Context | 2026-06-06 | Phase 1 context gathered | 4 gray areas discussed: file structure, clickers, FAILSAFE, tests |
 | Phase 1 impl | 2026-06-06 | Refactoring & tests | BaseClient, ScreenDetector, safety, clicker engine, assistant split, 64 tests |
 | File splits  | 2026-06-06 | File size reduction | Split uied_overlay, uied_service, perfect_clicker, pyautogui_executor, tool_executor, uied_button into packages |
+| Ship Phase 1 | 2026-06-06 | VERIFICATION + UAT + commit + push | Phase 1 shipped (PR on branch `shell`) |
 
 ---
 
