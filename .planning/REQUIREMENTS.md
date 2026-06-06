@@ -115,57 +115,57 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AGNT-01 | Phase 1 | Pending |
-| AGNT-02 | Phase 1 | Pending |
+| AGNT-01 | Phase 2 | Pending |
+| AGNT-02 | Phase 2 | Pending |
 | AGNT-03 | Phase 2 | Pending |
-| AGNT-04 | Phase 1 | Pending |
+| AGNT-04 | Phase 2 | Pending |
 | AGNT-05 | Phase 2 | Pending |
-| AGNT-06 | Phase 1 | Pending |
-| WEB-01 | Phase 2 | Pending |
-| WEB-02 | Phase 2 | Pending |
+| AGNT-06 | Phase 2 | Pending |
+| WEB-01 | Phase 3 | Pending |
+| WEB-02 | Phase 3 | Pending |
 | WEB-03 | Phase 3 | Pending |
-| WEB-04 | Phase 2 | Pending |
-| TERM-01 | Phase 3 | Pending |
-| TERM-02 | Phase 3 | Pending |
-| TERM-03 | Phase 3 | Pending |
-| TERM-04 | Phase 3 | Pending |
-| FILE-01 | Phase 2 | Pending |
-| FILE-02 | Phase 2 | Pending |
-| FILE-03 | Phase 2 | Pending |
-| FILE-04 | Phase 2 | Pending |
-| VOICE-01 | Phase 4 | Pending |
-| VOICE-02 | Phase 4 | Pending |
-| VOICE-03 | Phase 4 | Pending |
-| VOICE-04 | Phase 4 | Pending |
-| VOICE-05 | Phase 4 | Pending |
-| MEM-01 | Phase 5 | Pending |
-| MEM-02 | Phase 5 | Pending |
-| MEM-03 | Phase 5 | Pending |
-| MEM-04 | Phase 5 | Pending |
-| MEM-05 | Phase 5 | Pending |
-| MEM-06 | Phase 5 | Pending |
+| WEB-04 | Phase 3 | Pending |
+| TERM-01 | Phase 4 | Pending |
+| TERM-02 | Phase 4 | Pending |
+| TERM-03 | Phase 4 | Pending |
+| TERM-04 | Phase 4 | Pending |
+| FILE-01 | Phase 5 | Pending |
+| FILE-02 | Phase 5 | Pending |
+| FILE-03 | Phase 5 | Pending |
+| FILE-04 | Phase 5 | Pending |
+| VOICE-01 | Phase 6 | Pending |
+| VOICE-02 | Phase 6 | Pending |
+| VOICE-03 | Phase 6 | Pending |
+| VOICE-04 | Phase 6 | Pending |
+| VOICE-05 | Phase 6 | Pending |
+| MEM-01 | Phase 7 | Pending |
+| MEM-02 | Phase 7 | Pending |
+| MEM-03 | Phase 7 | Pending |
+| MEM-04 | Phase 7 | Pending |
+| MEM-05 | Phase 7 | Pending |
+| MEM-06 | Phase 7 | Pending |
 | RFCT-01 | Phase 1 | Pending |
 | RFCT-02 | Phase 1 | Pending |
 | RFCT-03 | Phase 1 | Pending |
 | RFCT-04 | Phase 1 | Pending |
-| SEC-01 | Phase 3 | Pending |
+| SEC-01 | Phase 4 | Pending |
 | SEC-02 | Phase 1 | Pending |
 | SEC-03 | Phase 1 | Pending |
-| SEC-04 | Phase 2 | Pending |
-| GUI-01 | Phase 6 | Pending |
-| GUI-02 | Phase 6 | Pending |
-| GUI-03 | Phase 6 | Pending |
-| GUI-04 | Phase 6 | Pending |
-| GUI-05 | Phase 4 | Pending |
-| GUI-06 | Phase 1 | Pending |
+| SEC-04 | Phase 5 | Pending |
+| GUI-01 | Phase 8 | Pending |
+| GUI-02 | Phase 8 | Pending |
+| GUI-03 | Phase 8 | Pending |
+| GUI-04 | Phase 8 | Pending |
+| GUI-05 | Phase 6 | Pending |
+| GUI-06 | Phase 2 | Pending |
 | TEST-01 | Phase 1 | Pending |
 | TEST-02 | Phase 1 | Pending |
-| TEST-03 | Phase 2 | Pending |
-| TEST-04 | Phase 5 | Pending |
+| TEST-03 | Phase 5 | Pending |
+| TEST-04 | Phase 7 | Pending |
 
 **Coverage:**
-- v1 requirements: 45 total
-- Mapped to phases: 45
+- v1 requirements: 47 total
+- Mapped to phases: 47
 - Unmapped: 0 ✓
 
 ---

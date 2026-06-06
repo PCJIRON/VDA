@@ -1,217 +1,100 @@
-# Project State
+# State: VDA — Voice-Driven Desktop Agent
 
-**Project:** Enhanced Vision Mode  
-**Version:** 0.5.0  
-**Last Updated:** 2026-03-29  
-**Status:** 🎉 **PHASE 1 UAT PASS** - Ready to Ship!
-
----
-
-## Current Phase
-
-**Phase:** 1 - Enhanced Coordinate Detection  
-**Status:** ✅ **COMPLETE - UAT PASS**
-
-### Completed Deliverables
-
-- [x] Enhanced VISION_SYSTEM_PROMPT with JSON format
-- [x] PyAutoGUIExecutor with JSON parsing
-- [x] Floating assistant integration
-- [x] OpenCVDetector (zero-shot, no templates)
-- [x] Two-stage detection (Qwen → OpenCV)
-- [x] Verification report (1-VERIFICATION.md)
-- [x] UAT report (1-UAT.md) - PASS
+**Last Updated:** 2026-06-06
+**Current Phase:** Phase 1 (Foundation & Security)
+**Current Status:** Not started — awaiting roadmap approval
 
 ---
 
-## Phase History
+## Project Reference
 
-| Phase | Name | Status | Started | Completed |
-|-------|------|--------|---------|-----------|
-| **0** | Initialization | ✅ Complete | 2026-03-29 | 2026-03-29 |
-| **1** | Coordinate Detection | ✅ **Complete** | 2026-03-29 | 2026-03-29 |
-| **2** | Multi-Step Automation | ⏳ Pending | - | - |
-| **3** | Auto-Execute & UI | ⏳ Pending | - | - |
-
----
-
-## UAT Results
-
-| Category | Pass | Partial | Not Implemented | Score |
-|----------|------|---------|-----------------|-------|
-| FR-1: Coordinate Detection | 5 | 0 | 0 | 100% ✅ |
-| FR-2: Multi-Step | 0 | 0 | 5 | 0% ⏳ |
-| FR-3: Auto-Execute | 0 | 2 | 3 | 40% ⏳ |
-| FR-4: Visual Feedback | 0 | 2 | 3 | 40% ⏳ |
-| NFR-1: Performance | 2 | 0 | 0 | 100% ✅ |
-| NFR-2: Security | 2 | 0 | 1 | 67% ✅ |
-| NFR-3: Usability | 2 | 0 | 1 | 67% ✅ |
-| NFR-4: Compatibility | 2 | 2 | 0 | 50% ⚠️ |
-| TR-1: Architecture | 4 | 0 | 0 | 100% ✅ |
-| TR-2: Code Quality | 3 | 0 | 1 | 75% ✅ |
-
-**Overall Score:** 60% (22/37)  
-**Phase 1 Score:** 100% (all in-scope requirements met)
+| Field | Value |
+|-------|-------|
+| Core Value | Turn user commands into correct desktop actions without data loss or loops |
+| Repository | VDA (Voice-Driven Desktop Agent) |
+| Stack | Python 3.9+, PyQt6, httpx, opencv-python, pyautogui, pynput, Microsoft GraphRAG |
+| Platform | Windows (primary), macOS/Linux secondary |
+| Mode | mvp |
+| Granularity | fine |
 
 ---
 
-## Metrics
+## Current Position
 
-| Metric | Target | Current | Status |
-|--------|--------|---------|--------|
-| **Phases Complete** | 3 | 1/3 | ⏳ |
-| **Features** | 4 | 2/4 | ✅ |
-| **Tests** | 20+ | 0 | ⏳ |
-| **Accuracy** | ~90% | **~90%+** | ✅ |
-| **Documentation** | Complete | Complete | ✅ |
-| **UAT** | PASS | **PASS** | ✅ |
+| Phase | Goal | Status |
+|-------|------|--------|
+| 1. Foundation & Security | Refactor codebase, fix tests, secure key storage and FAILSAFE | Not started |
+| 2. Agent Core | Agent manager with loop, sub-agents, doom detection, permissions | Not started |
+| 3. Web Tools | Web search, fetch, crawl | Not started |
+| 4. Terminal Tools | PowerSHell, CMD, cross-platform shell with approval | Not started |
+| 5. File Tools | File read/write, glob, grep with path safety | Not started |
+| 6. Voice System | Push-to-talk STT, multilingual TTS, voice UI | Not started |
+| 7. GraphRAG Memory | Local memory engine, short-term, long-term, mistake learning | Not started |
+| 8. GUI Redesign | DESIGN.md, modern UI, themes, tool visualization | Not started |
 
----
-
-## Accuracy Improvements
-
-| Element | Before | After | Improvement |
-|---------|--------|-------|-------------|
-| Buttons | ~50% | ~90% | +40% |
-| Colored elements | ~50% | ~95% | +45% |
-| Icons | ~50% | ~85% | +35% |
-| **Overall** | **~50%** | **~90%+** | **+40%** |
+```
+Phase 1 [    ] 0% — Not started
+```
 
 ---
 
-## Git Commits (Phase 1)
+## Performance Metrics
 
-| Commit | Message | Wave |
-|--------|---------|------|
-| `1c72da3` | Add JSON coordinate parser | Wave 1 |
-| `d607996` | Integrate JSON parser | Wave 1 |
-| `ec4a28f` | Create Zero-Shot OpenCV | Wave 2 |
-| `b9a3aae` | Integrate OpenCV | Wave 2 |
-| `d79d1a7` | Phase 1 Complete | Verification |
-
-**Total:** 5 commits, ~750 lines added
+*No metrics tracked yet. First phase will establish baseline.*
 
 ---
 
-## Next Steps
+## Accumulated Context
 
-**Options:**
-1. **Ship Phase 1** - Run `/gsd:ship 1` to create PR
-2. **Continue to Phase 2** - Multi-step automation planning
-3. **Manual Testing** - Test with real MSPaint scenarios
+### Active Decisions
 
----
+| ID | Decision | Status |
+|----|----------|--------|
+| D01 | Antigravity-style agent loop (plan → execute → verify → iterate) | Pending implementation |
+| D02 | Manager + sub-agents architecture (OpenCode-style delegation) | Pending implementation |
+| D03 | Python same stack (no TypeScript/Node.js) | ✓ Confirmed |
+| D04 | Microsoft GraphRAG for local memory | Pending implementation |
+| D05 | Push-to-talk + local TTS (no always-listening) | Pending implementation |
+| D06 | Memory-based learning v1 (mistake storage + retrieval; RL deferred) | Pending implementation |
+| D07 | DESIGN.md for AI-readable design tokens | Pending implementation |
+| D08 | Keep PyQt6 floating assistant (replace internals) | ✓ Confirmed |
 
-## Quick Links
+### TODOs
 
-- [Project Overview](PROJECT.md)
-- [Requirements](REQUIREMENTS.md)
-- [Roadmap](ROADMAP.md)
-- [Phase 1 Context](1-CONTEXT.md)
-- [Phase 1 Research](1-RESEARCH.md)
-- [Phase 1 Verification](1-VERIFICATION.md)
-- [Phase 1 UAT](1-UAT.md)
+- [ ] ⬜ Phase 1: Create plans for Foundation & Security
+- [ ] ⬜ Phase 2: Create plans for Agent Core
+- [ ] ⬜ Phase 3: Create plans for Web Tools
+- [ ] ⬜ Phase 4: Create plans for Terminal Tools
+- [ ] ⬜ Phase 5: Create plans for File Tools
+- [ ] ⬜ Phase 6: Create plans for Voice System
+- [ ] ⬜ Phase 7: Create plans for GraphRAG Memory
+- [ ] ⬜ Phase 8: Create plans for GUI Redesign
 
----
+### Blockers
 
-**Phase 1 Status:** 🎉 **UAT PASS - PRODUCTION READY** ✅
-
-**Accuracy:** ~95% (Qwen-only vision)  
-**Dependencies:** Minimal (NO OpenCV)  
-**Manual Work:** ZERO (no templates, no training)  
-**UAT Result:** PASS ✅  
-**Code Review:** ✅ **FIXED**  
-**Vision Mode:** ✅ **SIMPLIFIED** (Qwen-only, no auto-trigger)
-
----
-
-## Phase 1.5: Vision Mode Simplification
-
-**Date:** 2026-03-29  
-**Changes:**
-- ✅ Removed OpenCV detector (no longer needed)
-- ✅ Removed auto-trigger on mouse movement
-- ✅ Enhanced Qwen prompt for coordinate calculation
-- ✅ Sends screen resolution + mouse position to Qwen
-- ✅ Qwen calculates pixel-perfect coordinates
-
-**How It Works Now:**
-1. User enables vision mode
-2. User types input ("click submit button")
-3. Vision captures ONE screenshot
-4. Sends to Qwen with metadata
-5. Qwen analyzes + calculates coordinates
-6. Executes click
-
-**Benefits:**
-- No infinite loops
-- No quota waste (1 API call per request)
-- Simpler code (34 lines removed)
-- Qwen does all coordinate calculation
+*None currently.*
 
 ---
 
-## Critical Fixes Applied (Debug Session 1)
+## Session Continuity
 
-| Issue | Status | Fix |
-|-------|--------|-----|
-| Attribute name mismatch | ✅ Fixed | `pyautogui_executor` → `_pyautogui_executor` (3 refs) |
-| Missing color ranges | ✅ Fixed | Added 6 colors (pink, magenta, lime, violet, gold, silver) |
-| Red HSV wrap-around | ✅ Fixed | Second mask for 170-180° hue range |
-| Race condition | ✅ Fixed | Added `_worker_creating` flag |
-
-**Commit:** `72a6c7b` - [Phase 1 Debug] Fix 4 critical code review issues
-
-**Remaining (Non-Blocking):**
-- ⚠️ Auto-execute confirmation (UX improvement)
-- ⚠️ Magic numbers (code quality)
-- ⚠️ Dead code removal (cleanup)
+| Session | Date | Phase Worked | Notes |
+|---------|------|-------------|-------|
+| Initial | 2026-06-06 | Roadmap creation | 8 phases defined from 47 v1 requirements |
 
 ---
 
-## Next Steps
+## Key Files
 
-**Options:**
-1. **Manual Testing** - Test with real MSPaint scenarios ✅ **RECOMMENDED**
-2. **Code Review Re-check** - Verify fixes address all critical issues
-3. **Continue to Phase 2** - Multi-step automation planning
-
----
-
-## Metrics
-
-| Metric | Target | Current | Status |
-|--------|--------|---------|--------|
-| **Phases Complete** | 3 | 0/3 | ⏳ |
-| **Features** | 4 | 0/4 | ⏳ |
-| **Tests** | 20+ | 0 | ⏳ |
-| **Documentation** | Complete | Initialized | ⏳ |
+| File | Purpose |
+|------|---------|
+| `.planning/ROADMAP.md` | Phase structure, success criteria, dependencies |
+| `.planning/REQUIREMENTS.md` | All v1/v2 requirements with phase traceability |
+| `.planning/PROJECT.md` | Core value, context, constraints, key decisions |
+| `.planning/STATE.md` | (this file) — project state and session context |
+| `.planning/config.json` | Configuration (mode, granularity, workflows) |
+| `.planning/codebase/ARCHITECTURE.md` | Existing codebase architecture analysis |
 
 ---
 
-## Next Steps
-
-1. **Run `/gsd:plan-phase 1`** - Create detailed Phase 1 plan
-2. **Execute Phase 1** - Implement element detection
-3. **Test & Verify** - Validate detection accuracy
-4. **Continue to Phase 2** - Multi-step automation
-
----
-
-## Quick Links
-
-- [Project Overview](PROJECT.md)
-- [Requirements](REQUIREMENTS.md)
-- [Roadmap](ROADMAP.md)
-- [Configuration](config.json)
-
----
-
-## Notes
-
-**Project initialized through unified flow:**
-- User selected: Enhanced Vision Mode
-- Features: Coordinate Detection, Multi-Step Automation, Auto-Execute, Visual Feedback
-- Stack: Python + PyQt6 + OpenCV + PyAutoGUI
-
-**Ready to proceed with Phase 1 planning.**
+*State last updated: 2026-06-06*
