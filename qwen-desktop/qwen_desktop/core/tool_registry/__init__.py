@@ -7,6 +7,9 @@ Provides BaseTool abstract class, ToolRegistry singleton, and
 from qwen_desktop.core.tool_registry.registry import ToolRegistry, register_tool, get_registry
 from qwen_desktop.core.tool_registry.base_tool import BaseTool
 
+# Import tools sub-package to trigger @register_tool decorators
+from . import tools  # noqa: F401
+
 __all__ = [
     "ToolRegistry",
     "BaseTool",
