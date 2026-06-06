@@ -509,22 +509,11 @@ async def _parse_sse_stream(response, provider_name: str) -> AsyncGenerator[str,
 | A3 | No existing test file depends on the broken modules being deleted | TEST-01 | Low — test_auth.py and test_conversation.py only import non-existent modules |
 | A4 | keyring 25.7.0 works on Windows Credential Manager without additional config | SEC-02 | Medium — keyring requires `pywin32-ctypes` (already installed) but headless/WSL environments may lack a keyring backend |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **API Client deduplication: base class vs. shared utility functions?**
-   - What we know: Both APIClient and ZenClient need headers, message construction, SSE parsing, error handling. SSE parse loop and message construction are identical.
-   - What's unclear: Whether to use abstract base class (`BaseClient` → `APIClient`, `ZenClient`) or extract static utility functions (`_build_messages()`, `_parse_sse_stream()`) and keep thin wrappers.
-   - Recommendation: Planner decides (discretion area). Base class is cleaner if more providers will be added. Utility functions are simpler for the current two.
-
-2. **Keychain migration: lazy fallback vs. eager migration on first startup?**
-   - What we know: Existing `config.json` has plaintext `api_key` field. keyring integration needs to coexist with existing config.
-   - What's unclear: Whether to migrate all existing keys on first startup (write keyring, clear config) or read keyring first, fall back to config, and only write keyring on next `save()`.
-   - Recommendation: Lazy is safer — read keyring first, fall back to config file value. Write keyring on `save()`. Keeps backward compat and avoids data loss if keyring backend fails.
-
-3. **What is the exact split boundary for `uied_overlay.py` (937 lines)?**
-   - What we know: It's the second-largest file. It contains UI canvas, toolbar, event handling, and component editing inline.
-   - What's unclear: Whether to split it in Phase 1 (RFCT-05 applies) or defer to Phase 8 (GUI Redesign) where it would be a more natural home.
-   - Recommendation: Defer to Phase 8. Phase 1 already has 5 major refactoring areas; adding uied_overlay split risks scope creep. Justify under the flexible 100-line guideline (D-03).
+1. **API Client deduplication: base class vs. shared utility functions?** — RESOLVED: Base class approach chosen. Plan 01-02 creates `_base_client.py` with `BaseClient` abstract class that both `APIClient` and `ZenClient` extend. Cleaner for future provider additions.
+2. **Keychain migration: lazy fallback vs. eager migration on first startup?** — RESOLVED: Lazy fallback chosen. Plumb 01-03 reads keyring first, falls back to config file value, only writes keyring on `save()`. Keeps backward compatibility.
+3. **What is the exact split boundary for `uied_overlay.py` (937 lines)?** — RESOLVED: Deferred to Phase 8 (GUI Redesign). Phase 1 excludes this split; justified under D-03 flexible 100-line guideline.
 
 ## Environment Availability
 
