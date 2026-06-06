@@ -130,6 +130,15 @@ None — no external service configuration required.
 - All tests pass (148 total, 29 in this plan)
 - Threat model dispositions verified: T-02-08 (mitigated via structured context from parent), T-02-09 (accepted), T-02-10 (mitigated via original records preserved), T-02-11 (accepted), T-02-SC (mitigated — no packages installed)
 
+## Self-Check: PASSED
+
+- [x] All 5 created/modified files exist on disk
+- [x] All 4 commits present in git log
+- [x] 148 tests pass (29 new, 119 existing)
+- [x] Import verification: `from qwen_desktop.core.agent_manager import SubAgentDelegator, SessionCompactor, SubAgentContext, SubAgentResult` succeeds
+- [x] Requirements AGNT-03 and AGNT-05 completed
+- [x] Threat model dispositions verified (T-02-08 mitigated, T-02-09 accepted, T-02-10 mitigated, T-02-11 accepted, T-02-SC mitigated)
+
 ---
 
 *Phase: 02-agent-core*
