@@ -17,7 +17,7 @@ progress:
 
 **Last Updated:** 2026-06-06
 **Current Phase:** Phase 1 (Foundation & Security)
-**Current Status:** SHIPPED — PR pending on branch `shell`
+**Current Status:** Phase 2 context gathered — ready for research/planning
 
 ---
 
@@ -39,6 +39,7 @@ progress:
 | Phase | Goal | Status |
 |-------|------|--------|
 | 1. Foundation & Security | Refactor codebase, fix tests, secure key storage and FAILSAFE | Shipped (PR pending on `shell`) |
+| 2. Agent Core | Agent manager with loop, sub-agents, doom detection, permissions | Context gathered — ready for planning |
 | 2. Agent Core | Agent manager with loop, sub-agents, doom detection, permissions | Not started |
 | 3. Web Tools | Web search, fetch, crawl | Not started |
 | 4. Terminal Tools | PowerSHell, CMD, cross-platform shell with approval | Not started |
@@ -101,6 +102,7 @@ Phase 1 [########] 80% — Refactoring done, 5 largest files split, tests passin
 | Phase 1 impl | 2026-06-06 | Refactoring & tests | BaseClient, ScreenDetector, safety, clicker engine, assistant split, 64 tests |
 | File splits  | 2026-06-06 | File size reduction | Split uied_overlay, uied_service, perfect_clicker, pyautogui_executor, tool_executor, uied_button into packages |
 | Ship Phase 1 | 2026-06-06 | VERIFICATION + UAT + commit + push | Phase 1 shipped (PR on branch `shell`) |
+| Phase 2 context | 2026-06-06 | Discuss-phase for Agent Core | Thinking visualization decisions captured; agent discretion for remaining areas |
 
 ---
 
