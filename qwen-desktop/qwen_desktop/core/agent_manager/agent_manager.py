@@ -193,6 +193,17 @@ class AgentManager:
         last_result = self.results[-1] if self.results else {}
         verified = await self._verify_result(last_result)
 
+        # Check for doom loop after verification
+        loop_info = self.doom_detector.check_loop()
+        if loop_info:
+            # Emit doom loop event via logging; UI will be notified via AgentWorker signal
+            logger.warning(
+                "[AgentManager] Doom loop detected during verification: %s", loop_info["tool"]
+            )
+            self.pause(f"Doom loop detected: {loop_info['tool']}")
+            # State is set to PAUSED inside pause()
+            return self.state, {"event": "doom_loop", "info": loop_info}
+
         if verified.get("success"):
             self.current_step += 1
             if self.current_step >= len(self.plan):
