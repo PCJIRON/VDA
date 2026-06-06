@@ -145,4 +145,58 @@ DEFAULT_SETTINGS: dict[str, any] = {
     "check_for_updates": False,
     "send_analytics": False,
     "auto_save_conversations": True,
+    # Agent core configuration
+    "agent_type": "main",
+    "max_iterations": 10,
+    "compaction_threshold": 0.8,
+    "compaction_max_tokens": 128000,
+    "doom_loop_threshold": 3,
+    "permission_cache_ttl": 0,
+}
+
+AGENT_TYPES: dict[str, dict] = {
+    "main": {
+        "tools": [
+            "web_search", "web_fetch", "terminal",
+            "file_read", "file_write", "file_glob", "file_grep",
+            "voice",
+        ],
+        "permission_defaults": {
+            "allow_read": True,
+            "ask_mutation": True,
+            "deny_destructive": True,
+        },
+    },
+    "web": {
+        "tools": ["web_search", "web_fetch"],
+        "permission_defaults": {
+            "allow_read": True,
+            "ask_mutation": False,
+            "deny_destructive": True,
+        },
+    },
+    "terminal": {
+        "tools": ["terminal"],
+        "permission_defaults": {
+            "allow_read": False,
+            "ask_mutation": True,
+            "deny_destructive": True,
+        },
+    },
+    "file": {
+        "tools": ["file_read", "file_write", "file_glob", "file_grep"],
+        "permission_defaults": {
+            "allow_read": True,
+            "ask_mutation": True,
+            "deny_destructive": True,
+        },
+    },
+    "voice": {
+        "tools": ["voice"],
+        "permission_defaults": {
+            "allow_read": True,
+            "ask_mutation": False,
+            "deny_destructive": True,
+        },
+    },
 }
