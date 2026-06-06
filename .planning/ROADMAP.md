@@ -4,7 +4,7 @@
 **Mode:** mvp
 **Granularity:** fine
 **Total phases:** 8
-**Total v1 requirements:** 47
+**Total v1 requirements:** 48
 
 ## Core Value
 
@@ -27,15 +27,24 @@ VDA must reliably turn a user's spoken or typed command into correct desktop act
 **Mode:** mvp
 **Goal:** Codebase is refactored into maintainable modules, tests pass, and security basics (keychain storage, FAILSAFE) are in place
 **Depends on:** Nothing (brownfield — existing codebase)
-**Requirements:** RFCT-01, RFCT-02, RFCT-03, RFCT-04, SEC-02, SEC-03, TEST-01, TEST-02
+**Requirements:** RFCT-01, RFCT-02, RFCT-03, RFCT-04, RFCT-05, SEC-02, SEC-03, TEST-01, TEST-02
 **Success Criteria** (what must be TRUE):
   1. Eight clicker implementations consolidated into a single `ClickerEngine` with pluggable strategies — existing tests still pass
   2. `floating_assistant.py` (~1988 lines) split into controller module, chat widgets module, and action modules — no functionality lost
-  3. `APIClient` and `ZenClient` share a common base client with zero duplicated request/response logic
-  4. API keys are stored in OS keychain via `keyring` library instead of plaintext JSON config file
-  5. `pyautogui.FAILSAFE` is properly restored with `try/finally` guards in all automation code paths
-  6. Test suite runs without import errors (previously broken imports fixed), and agent loop unit tests pass
-**Plans:** TBD
+   3. `APIClient` and `ZenClient` share a common base client with zero duplicated request/response logic
+   4. Every Python file in `qwen_desktop/` is ≤100 lines — files exceeding the limit are split into focused sub-modules with single responsibility
+   5. API keys are stored in OS keychain via `keyring` library instead of plaintext JSON config file
+   6. `pyautogui.FAILSAFE` is properly restored with `try/finally` guards in all automation code paths
+   7. Test suite runs without import errors (previously broken imports fixed), and agent loop unit tests pass
+**Plans:** 4 plans across 3 waves
+
+```
+Plans:
+- [ ] 01-01-PLAN.md — Foundation: Screen utils + Safety + Test fix (Wave 1)
+- [ ] 01-02-PLAN.md — API Client Deduplication (Wave 1)
+- [ ] 01-03-PLAN.md — ClickerEngine + Keychain Integration (Wave 2)
+- [ ] 01-04-PLAN.md — Floating Assistant Split + New Tests (Wave 3)
+```
 
 ### Phase 2: Agent Core
 **Mode:** mvp
@@ -160,7 +169,7 @@ Phase 3    Phase 4    Phase 5    Phase 6              Phase 8 (GUI)
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Security | 0/0 | Not started | - |
+| 1. Foundation & Security | 0/4 | Not started (planned) | - |
 | 2. Agent Core | 0/0 | Not started | - |
 | 3. Web Tools | 0/0 | Not started | - |
 | 4. Terminal Tools | 0/0 | Not started | - |
