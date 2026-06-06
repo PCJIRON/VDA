@@ -65,11 +65,28 @@ class ShortTermMemory:
             lines.append(f"  - {s['step']}: {s['result'][:100]}")
         return "\n".join(lines)
 
-    def clear(self):
-        self.entries = []
-        self._task_steps = []
-        self._current_task = None
-        self._token_count = 0
+    def compact_if_needed(self, current_tokens: int, max_tokens: int) -> None:
+        """Compact short‑term memory if token limit exceeded.
+
+        Simple implementation: clear entries when ``current_tokens`` exceeds
+        ``max_tokens``. In a full implementation this would invoke a
+        ``SessionCompactor`` to summarise the conversation.
+        """
+        if current_tokens > max_tokens:
+            logger.info(
+                "[STM] Token limit exceeded (%d > %d) – compacting memory",
+                current_tokens,
+                max_tokens,
+            )
+            self.entries.clear()
+            self._token_count = 0
+        else:
+            logger.debug(
+                "[STM] Token count within limits (%d <= %d) – no compaction needed",
+                current_tokens,
+                max_tokens,
+            )
+
 
 
 class LongTermMemory:
