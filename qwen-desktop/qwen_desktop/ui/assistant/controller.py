@@ -621,6 +621,36 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
 
         return components
 
+    def _take_screenshot_b64(self) -> str:
+        """Capture the desktop and return a base64 JPEG string (no data: prefix).
+
+        Used by AgentManager as the screenshot_fn injection. The image is
+        resized to 1280x720 and saved as JPEG quality 80 to keep the
+        per-step LLM call fast (smaller image = fewer tokens + faster
+        upload than full-screen PNG).
+
+        Returns:
+            Base64-encoded image string. Empty string on failure.
+        """
+        try:
+            import pyautogui
+            import base64
+            from PIL import Image
+
+            img = pyautogui.screenshot()
+            # Resize to a vision-friendly resolution
+            try:
+                img = img.resize((1280, 720), Image.Resampling.LANCZOS)
+            except AttributeError:
+                img = img.resize((1280, 720), Image.LANCZOS)
+
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=80, optimize=True)
+            return base64.b64encode(buf.getvalue()).decode()
+        except Exception as e:
+            logger.warning(f"Screenshot capture failed: {e}")
+            return ""
+
     def _build_history_with_prompt(self, history: list) -> list:
         try:
             import pyautogui
@@ -906,7 +936,14 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
             return self.worker
 
         # Build AgentManager and wrap it in AgentWorker for step‑by‑step UI updates
-        agent_manager = AgentManager(api_client, get_registry(), self.settings)
+        # Inject a screenshot callable so the agent can grab a fresh
+        # screenshot on every PLAN iteration (re-plan-per-step design).
+        agent_manager = AgentManager(
+            api_client,
+            get_registry(),
+            self.settings,
+            screenshot_fn=self._take_screenshot_b64,
+        )
         # Attach session info for optional compaction signals
         agent_manager.session_service = self.session_service
         agent_manager._session_id = self.session_id

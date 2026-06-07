@@ -28,21 +28,22 @@ def mock_tool_registry():
 
 
 class TestAgentState:
-    """Verify all 9 AgentState enum values exist with correct string values."""
+    """Verify all AgentState enum values exist with correct string values."""
 
     def test_all_states_present(self):
-        """Check all 9 lifecycle states exist."""
+        """Check all lifecycle states exist in the re-plan-per-step design."""
         states = {s.name: s.value for s in AgentState}
         assert states["IDLE"] == "idle"
         assert states["INIT"] == "init"
         assert states["PLAN"] == "plan"
         assert states["EXECUTE"] == "execute"
         assert states["VERIFY"] == "verify"
-        assert states["ITERATE"] == "iterate"
         assert states["COMPLETE"] == "complete"
         assert states["ERROR"] == "error"
         assert states["PAUSED"] == "paused"
-        assert len(states) == 9
+        # ITERATE was removed in the re-plan design — verification is implicit
+        assert "ITERATE" not in states
+        assert len(states) == 8
 
     def test_enum_values_are_unique(self):
         """Verify no duplicate enum values."""
@@ -67,14 +68,16 @@ class TestAgentManager:
         assert manager.state == AgentState.PAUSED
         assert manager._paused_reason == "Test pause reason"
 
-    def test_resume_returns_to_execute(self, mock_api_client, mock_tool_registry):
-        """resume() restores EXECUTE state after pause."""
+    def test_resume_returns_to_plan(self, mock_api_client, mock_tool_registry):
+        """resume() restores PLAN state after pause (re-plan with new screenshot)."""
         manager = AgentManager(mock_api_client, mock_tool_registry)
         manager.state = AgentState.PAUSED
         manager._paused_reason = "Test"
 
         manager.resume()
-        assert manager.state == AgentState.EXECUTE
+        # In the re-plan design, resume goes back to PLAN so the agent
+        # re-evaluates the (now changed) screen state.
+        assert manager.state == AgentState.PLAN
         assert manager._paused_reason is None
 
     def test_abort_sets_complete(self, mock_api_client, mock_tool_registry):
@@ -113,8 +116,10 @@ class TestAgentManager:
         manager = AgentManager(mock_api_client, mock_tool_registry, max_iterations=5)
         assert manager.max_iterations == 5
 
+        # Default is 30 in the re-plan design (one PLAN per step, so more
+        # headroom is needed vs the old static-plan design).
         default_manager = AgentManager(mock_api_client, mock_tool_registry)
-        assert default_manager.max_iterations == 10
+        assert default_manager.max_iterations == 30
 
     def test_step_returns_paused_state(self, mock_api_client, mock_tool_registry):
         """When paused, step() returns immediately."""

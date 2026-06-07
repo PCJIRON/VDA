@@ -96,11 +96,13 @@ class AgentWorker(QThread):
     async def _run_loop(self) -> None:
         """Main agent loop — drives AgentManager step() until completion.
 
-        Flow per state machine:
+        Flow per state machine (re-plan-per-step design):
             1. Set state to INIT and call step()
-            2. AgentManager transitions through INIT → PLAN → EXECUTE
-            3. For EXECUTE: execute tool via ToolRegistry, check doom loop
-            4. Loop until COMPLETE or ERROR
+            2. AgentManager transitions INIT → PLAN (1 LLM call + screenshot)
+            3. PLAN returns either done → COMPLETE, or 1-action plan → EXECUTE
+            4. EXECUTE: worker runs the single step via ToolRegistry
+            5. VERIFY: no LLM call — just transition back to PLAN (re-plan)
+            6. Repeat until COMPLETE or ERROR
         """
         # Initialize agent manager with user input
         self._agent_manager._user_input = self._user_input
@@ -127,7 +129,10 @@ class AgentWorker(QThread):
                 results = output.get("results") if output else None
                 self.finished.emit(results)
                 self.status_changed.emit("complete")
-                logger.info("[AgentWorker] Agent loop completed")
+                logger.info(
+                    "[AgentWorker] Agent loop completed in %d steps",
+                    len(self._agent_manager.completed_steps),
+                )
                 break
 
             if state == AgentState.ERROR:
@@ -159,16 +164,34 @@ class AgentWorker(QThread):
                 plan = output.get("plan", [])
                 self.status_changed.emit("plan")
                 self.plan_created.emit(plan)
-                logger.info("[AgentWorker] Plan created: %d steps", len(plan))
+                logger.info(
+                    "[AgentWorker] Plan step %d created: %d action(s)",
+                    self._agent_manager.iteration_count,
+                    len(plan),
+                )
+
+            elif event == "plan_done":
+                # LLM declared task done in PLAN — transition handled by
+                # AgentManager (state is already COMPLETE), the terminal
+                # branch above will fire on the next loop iteration.
+                pass
 
             elif event == "execute_step":
                 await self._handle_execute_step(output)
 
             elif event == "all_steps_completed":
+                # Should not fire in re-plan design (plan is always 1),
+                # but handle defensively.
                 self.status_changed.emit("verify")
 
+            elif event == "verify_replan":
+                # Re-plan with a fresh screenshot — AgentManager already
+                # transitioned state back to PLAN.
+                self.status_changed.emit("replan")
+                logger.debug("[AgentWorker] Re-planning with fresh screenshot")
+
             elif event == "verification":
-                # AgentManager handles verification internally via API call
+                # Legacy event from old design — kept for back-compat, ignored.
                 pass
 
             elif event == "retry_step":
@@ -207,6 +230,7 @@ class AgentWorker(QThread):
         # Execute the tool via ToolRegistry
         result_str = ""
         error_str = None
+        success = False
         try:
             if tool_name:
                 tool = self._agent_manager.tool_registry.get_tool(tool_name)
@@ -217,6 +241,7 @@ class AgentWorker(QThread):
                         if isinstance(raw_result, dict)
                         else str(raw_result)[:500]
                     )
+                    success = True
                 else:
                     result_str = f"Tool '{tool_name}' not found"
                     logger.warning(
@@ -233,6 +258,11 @@ class AgentWorker(QThread):
                 "index": output.get("index", 0),
             })
 
+            # Record this step in completed_steps so the next PLAN can
+            # include it in the LLM's history context. record_step_outcome
+            # also advances current_step.
+            self._agent_manager.record_step_outcome(step, result_str, success)
+
             # Doom loop detection
             self._agent_manager.doom_detector.record_call(
                 tool_name, args, result_str
@@ -247,8 +277,7 @@ class AgentWorker(QThread):
                 # Wait — will be resumed by resume_from_doom_loop()
                 return
 
-            # Success — advance step and emit completion
-            self._agent_manager.current_step += 1
+            # Success — record_step_outcome already advanced current_step
             self.step_completed.emit(step_label, "success", result_str)
 
         except Exception as e:
@@ -263,7 +292,8 @@ class AgentWorker(QThread):
                 "error": error_str,
                 "index": output.get("index", 0),
             })
-            self._agent_manager.current_step += 1
+            # Record the failed step in history (also advances current_step)
+            self._agent_manager.record_step_outcome(step, error_str, False)
             self.step_failed.emit(step_label, error_str)
 
         # Check compaction after each step
