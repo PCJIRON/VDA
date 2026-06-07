@@ -45,6 +45,12 @@ class ScriptedAPI:
         else:
             yield json.dumps(response)
 
+    async def chat(self, messages, **kwargs):
+        # Same as send_message but for the .chat(messages) interface used
+        # by AgentManager (preserves system + user as separate roles).
+        async for chunk in self.send_message(messages, []):
+            yield chunk
+
 
 @pytest.fixture
 def mock_registry():
@@ -80,7 +86,15 @@ def test_screenshot_fn_injection_and_usage(mock_registry):
     assert state == AgentState.EXECUTE
     # The LLM call should have included an image_url block in the user content
     assert len(api.calls) == 1
-    messages = api.calls[0]  # send_message(messages, [])
+    messages = api.calls[0]  # chat(messages) -> send_message(messages, [])
+    # Regression: system and user must be SEPARATE messages, not nested.
+    # Previously we passed the full messages list as the first arg to
+    # send_message, which caused the system prompt to be nested inside
+    # the user content. That made minimax-m3-free respond as if the
+    # system prompt was a user message ("No task was provided").
+    assert len(messages) == 2, f"Expected [system, user] but got {len(messages)} messages"
+    assert messages[0]["role"] == "system"
+    assert messages[1]["role"] == "user"
     user_msg = messages[1]  # [system, user]
     user_content = user_msg["content"]
     assert any(

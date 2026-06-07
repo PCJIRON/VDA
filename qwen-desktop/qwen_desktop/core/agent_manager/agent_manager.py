@@ -241,9 +241,18 @@ class AgentManager:
         ]
 
         # 3. ONE LLM call for decide + verify (the next screenshot IS the verify)
+        # Use chat(messages) so the full messages list (system + user with
+        # image) is preserved correctly. send_message(message, history)
+        # would treat our full list as the user text and nest the system
+        # prompt inside the user content (a bug we hit on minimax-m3-free).
         full_response = ""
         try:
-            async for chunk in self.api_client.send_message(messages, []):
+            async for chunk in self.api_client.chat(messages):
+                full_response += chunk
+        except AttributeError:
+            # Fallback for clients that only have send_message: pass the
+            # user content only and let the client inject the system prompt.
+            async for chunk in self.api_client.send_message(user_content, []):
                 full_response += chunk
         except Exception as e:
             logger.error("[AgentManager] LLM call failed: %s", e, exc_info=True)
