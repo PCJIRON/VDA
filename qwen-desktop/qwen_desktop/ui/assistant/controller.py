@@ -921,21 +921,41 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         return True
 
     def _create_worker(self, api_client, message, history, vision_mode=False):
-        # Extract the user text from whatever the caller passed in. When
-        # vision mode is on, `message` is a list of content blocks like
-        # `[{"type": "text", "text": "open chrome"}, {"type": "image_url", ...}]`.
-        # When vision is off, it's a plain string. The agent needs the
-        # raw text (not the structured payload) as its task description.
+        # Extract the user text from whatever the caller passed in.
+        #
+        # When the user types in chat (vision ON or OFF), message is a
+        # plain string → use it directly.
+        #
+        # When vision mode is ON, `message` is a list of content blocks:
+        #   [{"type": "text", "text": vision_prompt}, {"type": "image_url"}]
+        # The vision_prompt contains output format instructions that should
+        # NOT be passed as the agent's user_input — that would create a
+        # double-layered prompt when the agent wraps it in 'USER TASK:'.
+        #
+        # Instead, use the ORIGINAL clean user text from _last_user_text.
+        # If that's not set (e.g. vision hotkey trigger, not user typing),
+        # fall back to extracting from the content payload.
         if isinstance(message, str):
             user_input = message
         elif isinstance(message, list):
-            user_input = "".join(
-                block.get("text", "")
-                for block in message
-                if isinstance(block, dict) and block.get("type") == "text"
-            )
+            original = getattr(self, "_last_user_text", "")
+            if original:
+                user_input = original
+            else:
+                # Fallback: vision hotkey trigger — extract text from payload
+                user_input = "".join(
+                    block.get("text", "")
+                    for block in message
+                    if isinstance(block, dict) and block.get("type") == "text"
+                )
         else:
             user_input = ""
+        logger.info(
+            "[WORKER-INIT] message type=%s vision=%s user_input=%r",
+            type(message).__name__,
+            vision_mode,
+            user_input[:120],
+        )
 
         # Short-circuit: when vision is OFF and the message looks like pure chat,
         # skip the entire agent loop and call the LLM directly. The agent loop is
