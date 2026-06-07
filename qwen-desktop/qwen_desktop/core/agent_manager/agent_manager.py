@@ -88,12 +88,17 @@ class AgentManager:
         settings: Optional[Any] = None,
         max_iterations: int = 30,
         screenshot_fn: Optional[ScreenshotFn] = None,
+        vision_executor: Optional[Any] = None,
     ) -> None:
         self.api_client = api_client
         self.tool_registry = tool_registry
         self.settings = settings
         self.max_iterations = max_iterations
         self.screenshot_fn = screenshot_fn
+        # vision_executor (EnhancedExecutor) executes vision actions
+        # directly (click/type/scroll) — bypasses the tool registry which
+        # only knows about generic tool names like 'uied'.
+        self.vision_executor = vision_executor
 
         # State
         self.state = AgentState.IDLE
@@ -268,9 +273,12 @@ class AgentManager:
             }
 
         # 5b. Next action → wrap in a single-step plan
+        # tool="vision" routes the step to the EnhancedExecutor (via the
+        # worker) instead of the generic tool registry. This is what
+        # makes click/type/scroll actually do something on the desktop.
         self.plan = [{
             "step": action.get("description", "next action"),
-            "tool": "uied",
+            "tool": "vision",
             "args": action,
         }]
         self.current_step = 0
@@ -421,10 +429,13 @@ class AgentManager:
     def _parse_action_response(self, response_text: str) -> dict[str, Any]:
         """Parse the LLM's JSON response into an action dict.
 
-        Handles three cases:
+        Handles four cases:
           1. `{"done": true, "summary": ...}` — task complete
           2. `{"action": ..., "target_name": ..., ...}` — next action
-          3. Parse failure — safe fallback that asks the LLM to look again
+          3. Conversational/no-JSON response (greeting, "I can't see",
+             "what do you need") — treat as done: true with summary so the
+             user sees the message and the agent doesn't loop forever
+          4. Parse failure with technical gibberish — safe fallback action
 
         Returns:
             A dict with at minimum one of: {"done": True} or {"action": ...}.
@@ -446,6 +457,31 @@ class AgentManager:
                     return parsed
             except json.JSONDecodeError:
                 pass
+
+        # Heuristic: if the LLM's response looks conversational (not JSON,
+        # not technical gibberish like 'null' or '[]'), surface it as a
+        # `done: true` summary instead of looping on a `wait` action. This
+        # handles free-form models that can't always emit structured JSON
+        # (e.g. minimax-m3-free for greetings).
+        stripped = response_text.strip()
+        # Strip <think>...</think> blocks
+        stripped_no_think = re.sub(r"<think>.*?</think>", "", stripped, flags=re.DOTALL).strip()
+        # Only treat as conversational prose if it has letters/words
+        # (not a single token like 'null' or '[]' which is parse failure)
+        looks_like_prose = (
+            stripped_no_think
+            and not stripped_no_think.startswith("{")
+            and len(stripped_no_think) > 5
+            and re.search(r"[A-Za-z]{3,}", stripped_no_think)
+        )
+        if looks_like_prose:
+            logger.info(
+                "[AgentManager] Treating non-JSON LLM response as done: true"
+            )
+            return {
+                "done": True,
+                "summary": stripped_no_think[:500],
+            }
 
         logger.warning(
             "[AgentManager] Could not parse JSON from LLM response: %s",

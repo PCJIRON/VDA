@@ -1,6 +1,8 @@
 """Floating assistant controller — main application window with chat, vision, and UIED functionality."""
 
+import base64
 import datetime
+import io
 import logging
 import re
 import uuid
@@ -634,7 +636,6 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         """
         try:
             import pyautogui
-            import base64
             from PIL import Image
 
             img = pyautogui.screenshot()
@@ -938,11 +939,15 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         # Build AgentManager and wrap it in AgentWorker for step‑by‑step UI updates
         # Inject a screenshot callable so the agent can grab a fresh
         # screenshot on every PLAN iteration (re-plan-per-step design).
+        # Also pass the EnhancedExecutor so vision actions (click/type/
+        # scroll) can be executed directly without going through the
+        # generic tool registry (which only knows tool names like 'uied').
         agent_manager = AgentManager(
             api_client,
             get_registry(),
             self.settings,
             screenshot_fn=self._take_screenshot_b64,
+            vision_executor=self._enhanced_executor,
         )
         # Attach session info for optional compaction signals
         agent_manager.session_service = self.session_service

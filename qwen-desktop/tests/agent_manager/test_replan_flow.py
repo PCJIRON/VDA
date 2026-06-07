@@ -315,8 +315,10 @@ def test_max_iterations_triggers_error_state(mock_registry):
 # ---------------------------------------------------------------------------
 
 def test_malformed_json_falls_back_to_wait(mock_registry):
-    """If LLM returns garbage, _handle_plan returns a safe 'wait' action."""
-    api = ScriptedAPI(["this is not JSON at all, just rambling text"])
+    """If LLM returns non-JSON garbage like 'null', _handle_plan returns
+    a safe 'wait' action so the agent doesn't loop forever.
+    """
+    api = ScriptedAPI(["null"])
     manager = AgentManager(api_client=api, tool_registry=mock_registry)
     manager._user_input = "test"
     manager.state = AgentState.PLAN
@@ -329,7 +331,24 @@ def test_malformed_json_falls_back_to_wait(mock_registry):
     assert len(manager.plan) == 1
     # Fallback action should be a wait with the raw text in description
     assert manager.plan[0]["args"]["action"] == "wait"
-    assert "rambling" in manager.plan[0]["args"]["description"]
+
+
+def test_conversational_response_treated_as_done(mock_registry):
+    """If LLM returns free-form text (no JSON), treat it as done: true
+    with the text as summary. Prevents infinite re-plan loops when the
+    model is just being conversational instead of action-oriented.
+    """
+    api = ScriptedAPI(["Hey! What can I help you with?"])
+    manager = AgentManager(api_client=api, tool_registry=mock_registry)
+    manager._user_input = "hi"
+    manager.state = AgentState.PLAN
+
+    async def run():
+        return await manager._handle_plan()
+
+    state, output = asyncio.run(run())
+    assert state == AgentState.COMPLETE
+    assert "Hey" in manager.last_summary
 
 
 def test_partial_json_extraction_works(mock_registry):

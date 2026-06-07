@@ -227,12 +227,28 @@ class AgentWorker(QThread):
 
         self.step_started.emit(step_label, tool_description)
 
-        # Execute the tool via ToolRegistry
+        # Execute the tool via ToolRegistry (or vision_executor for vision
+        # actions like click/type/scroll)
         result_str = ""
         error_str = None
         success = False
         try:
-            if tool_name:
+            if tool_name == "vision":
+                # Direct vision action execution (click, type, scroll, etc.)
+                vision_executor = self._agent_manager.vision_executor
+                if vision_executor is None:
+                    result_str = "No vision executor configured"
+                    logger.warning("[AgentWorker] No vision_executor on AgentManager")
+                else:
+                    # EnhancedExecutor.execute(parsed) expects {action, x, y, text}
+                    # Our action dict has {action, target: [x, y], text}
+                    parsed = dict(args)
+                    if "target" in parsed and isinstance(parsed["target"], (list, tuple)):
+                        parsed["x"], parsed["y"] = parsed["target"][0], parsed["target"][1]
+                    ok = vision_executor.execute(parsed)
+                    result_str = f"Vision action '{parsed.get('action', '?')}' -> {ok}"
+                    success = bool(ok)
+            elif tool_name:
                 tool = self._agent_manager.tool_registry.get_tool(tool_name)
                 if tool:
                     raw_result = tool.execute(args)
