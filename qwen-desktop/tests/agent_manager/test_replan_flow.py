@@ -103,6 +103,40 @@ def test_screenshot_fn_injection_and_usage(mock_registry):
     )
 
 
+def test_user_task_reaches_llm_prompt(mock_registry):
+    """Regression: the user_input must end up in the LLM's user prompt.
+    Previously _create_worker dropped the user text when vision mode
+    passed a content-payload list instead of a plain string, so the
+    LLM saw 'USER TASK: ' (empty) and replied 'No user task was
+    provided'. Verify the task string is present in the prompt.
+    """
+    api = ScriptedAPI([{"done": True, "summary": "ok"}])
+    manager = AgentManager(api_client=api, tool_registry=mock_registry)
+    manager._user_input = "open chrome and click on new tab"
+    manager.state = AgentState.PLAN
+
+    async def run():
+        return await manager._handle_plan()
+
+    asyncio.run(run())
+    # The LLM was called with a messages list
+    assert len(api.calls) == 1
+    messages = api.calls[0]
+    # Find the user message
+    user_msgs = [m for m in messages if m.get("role") == "user"]
+    assert user_msgs, "Expected a user-role message"
+    user_content = user_msgs[-1]["content"]
+    # The user content should mention the actual task
+    if isinstance(user_content, str):
+        assert "open chrome" in user_content
+    else:
+        # Multi-block content (text + image). The first text block
+        # should contain the task description.
+        text_blocks = [b for b in user_content if b.get("type") == "text"]
+        assert text_blocks
+        assert "open chrome" in text_blocks[0]["text"]
+
+
 def test_screenshot_failure_does_not_crash(mock_registry):
     """If screenshot_fn raises, _handle_plan continues with text-only prompt."""
     def broken_screenshot():

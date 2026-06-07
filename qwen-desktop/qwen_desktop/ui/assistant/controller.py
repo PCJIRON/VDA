@@ -921,7 +921,21 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         return True
 
     def _create_worker(self, api_client, message, history, vision_mode=False):
-        user_input = message if isinstance(message, str) else ""
+        # Extract the user text from whatever the caller passed in. When
+        # vision mode is on, `message` is a list of content blocks like
+        # `[{"type": "text", "text": "open chrome"}, {"type": "image_url", ...}]`.
+        # When vision is off, it's a plain string. The agent needs the
+        # raw text (not the structured payload) as its task description.
+        if isinstance(message, str):
+            user_input = message
+        elif isinstance(message, list):
+            user_input = "".join(
+                block.get("text", "")
+                for block in message
+                if isinstance(block, dict) and block.get("type") == "text"
+            )
+        else:
+            user_input = ""
 
         # Short-circuit: when vision is OFF and the message looks like pure chat,
         # skip the entire agent loop and call the LLM directly. The agent loop is
