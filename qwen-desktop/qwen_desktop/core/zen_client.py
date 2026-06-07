@@ -17,17 +17,16 @@ class ZenClient(BaseClient):
 
     def _get_headers(self) -> dict:
         api_key = self._config.get_api_key()
-        if not api_key:
-            api_key = "public"
 
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
             "x-opencode-client": "vda-desktop",
             "x-opencode-session": str(uuid.uuid4()),
             "x-opencode-project": "global",
             "x-opencode-request": str(uuid.uuid4()),
         }
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         return headers
 
     async def test_connection(self) -> Tuple[bool, str]:

@@ -5,7 +5,7 @@ import logging
 import re
 import uuid
 
-from PyQt6.QtCore import Qt, QPoint, QEasingCurve, QTimer, QEvent, QVariantAnimation
+from PyQt6.QtCore import Qt, QPoint, QEasingCurve, QTimer, QEvent, QVariantAnimation, QPropertyAnimation, QRect
 from PyQt6.QtGui import QColor, QPainter, QLinearGradient, QBrush, QCursor, QPixmap, QAction
 from PyQt6.QtWidgets import (
     QWidget, QLineEdit, QHBoxLayout, QPushButton, QLabel, QVBoxLayout,
@@ -34,6 +34,10 @@ from qwen_desktop.ui.components.uied_button import UIEDButton
 from qwen_desktop.ui.settings_dialog import SettingsDialog
 from qwen_desktop.ui.assistant.chat_popup import ChatHistoryPopup
 from qwen_desktop.ui.assistant.worker import APIServerWorker
+from qwen_desktop.core.agent_manager.agent_worker import AgentWorker
+from qwen_desktop.core.agent_manager.agent_manager import AgentManager
+from qwen_desktop.core.tool_registry import get_registry
+from qwen_desktop.ui.assistant.thinking_panel import ThinkingPanel
 from qwen_desktop.ui.assistant.vision_handler import VisionHandlerMixin
 from qwen_desktop.ui.assistant.uied_handler import UIEDHandlerMixin
 
@@ -79,12 +83,14 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self.resize(self.collapsed_size, self.collapsed_size)
 
         screen = QApplication.primaryScreen().availableGeometry()
-        self.move(
-            int(screen.width() - self.collapsed_size - 40),
-            int(screen.height() - self.collapsed_size - 40),
-        )
+        target_x = screen.x() + screen.width() - self.collapsed_size - 40
+        target_y = screen.y() + screen.height() - self.collapsed_size - 40
+        target_x = max(screen.x(), min(target_x, screen.x() + screen.width() - self.collapsed_size))
+        target_y = max(screen.y(), min(target_y, screen.y() + screen.height() - self.collapsed_size))
+        self.move(target_x, target_y)
 
-        self.history_popup = ChatHistoryPopup()
+        self.thinking_panel = ThinkingPanel()
+        self.history_popup = ChatHistoryPopup(thinking_panel=self.thinking_panel)
         self.history_popup.close_btn.clicked.connect(self.toggle_expand)
 
         self._setup_ui()
@@ -126,6 +132,14 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         )
 
         QApplication.instance().installEventFilter(self)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        screen_geom = QApplication.primaryScreen().availableGeometry()
+        new_x = max(screen_geom.x(), min(self.x(), screen_geom.x() + screen_geom.width() - self.width()))
+        new_y = max(screen_geom.y(), min(self.y(), screen_geom.y() + screen_geom.height() - self.height()))
+        if new_x != self.x() or new_y != self.y():
+            self.move(new_x, new_y)
 
     def _find_with_ui_automation(self, target_name: str) -> Optional[Tuple[int, int, str]]:
         if not self._use_ui_automation:
@@ -222,13 +236,22 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self.input_layout.addWidget(self.uied_btn)
         self.input_layout.addWidget(self.attach_btn)
 
-        self.input_wrapper.setFixedWidth(self.expanded_size - self.collapsed_size)
+        self.input_wrapper.setMinimumWidth(0)
+        self.input_wrapper.setMaximumWidth(self.expanded_size - self.collapsed_size)
         self.input_wrapper.hide()
 
         self.sparkle_wrapper = QWidget()
         self.sparkle_wrapper.setFixedSize(self.collapsed_size, self.collapsed_size)
 
-        self.main_layout.addWidget(self.input_wrapper)
+        # Layout: input wrapper (hidden when collapsed), sparkle on right
+        self.panel_container = QWidget()
+        self.panel_container.setFixedWidth(0)
+        self.panel_layout = QVBoxLayout(self.panel_container)
+        self.panel_layout.setContentsMargins(0, 0, 0, 0)
+        self.panel_layout.setSpacing(0)
+        self.panel_layout.addWidget(self.input_wrapper)
+        # Add container and sparkle to main layout
+        self.main_layout.addWidget(self.panel_container)
         self.main_layout.addWidget(self.sparkle_wrapper)
 
     def _setup_context_menu(self):
@@ -279,6 +302,8 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self.setFixedSize(val, self.collapsed_size)
         new_x = self._anim_right_edge - val + 1
         self.move(new_x, self.y())
+        panel_w = max(0, val - self.collapsed_size)
+        self.panel_container.setFixedWidth(panel_w)
 
     def update_size(self, expand: bool):
         target_width = self.expanded_size if expand else self.collapsed_size
@@ -315,6 +340,7 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
             self.anim.finished.connect(expand_done)
         else:
             self.input_wrapper.hide()
+            self.panel_container.setFixedWidth(0)
             try:
                 self.anim.finished.disconnect()
             except:
@@ -608,14 +634,43 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         prompt = build_system_prompt(
             screen_width=sw, screen_height=sh,
             components=components,
+            vision_mode=self.is_vision_enabled,
         )
         has_system = any(m.get("role") == "system" for m in history)
         if not has_system:
             return [{"role": "system", "content": prompt}] + list(history)
         return list(history)
 
+    def _format_results(self, results):
+        """Combine tool execution results into a readable AI response.
+
+        Args:
+            results: List of step result dictionaries from AgentWorker.
+        Returns:
+            A string summarizing the outcome, or None if no usable text was produced.
+        """
+        if not results:
+            return None
+
+        # Extract the actual result text from each step (skip empty/None)
+        texts = []
+        for r in results:
+            if not isinstance(r, dict):
+                continue
+            outcome = r.get("result", "")
+            if outcome and isinstance(outcome, str) and outcome.strip():
+                texts.append(outcome.strip())
+
+        if not texts:
+            return None
+
+        return "\n\n".join(texts)
+
     def _handle_api(self, text, attachments):
-        self.history_popup.add_message("...", "ai")
+        self.history_popup.add_message("\u2728 Thinking\u2026", "ai")
+        self.history_popup.set_thinking_status("Thinking\u2026")
+        # Remember the original user text for fallback (vision may rewrite it)
+        self._last_user_text = text or ""
 
         content_payload = []
         if text:
@@ -697,6 +752,7 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
     def _on_api_finished(self, full_text):
         try:
             self._set_send_mode()
+            self.history_popup.set_thinking_status("")
             self.history_popup.update_last_message(full_text)
             self.last_msg_uuid = self.session_service.save_message(
                 self.session_id, "assistant", full_text, parent_uuid=self.last_msg_uuid
@@ -710,8 +766,38 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
             QTimer.singleShot(500, lambda: self._execute_uied_from_llm(full_text))
 
     def _on_api_error(self, err):
+        # If the agent loop failed (max iterations, doom loop, safety limit, etc.),
+        # the user is likely just chatting — fall back to a direct LLM call so they
+        # get a real response instead of an error string.
+        agent_failure_markers = (
+            "max iterations",
+            "safety limit",
+            "agent loop",
+            "unknown error",
+        )
+        is_agent_failure = any(m in (err or "").lower() for m in agent_failure_markers)
+
+        if is_agent_failure and getattr(self, "_last_user_text", ""):
+            logger.info(
+                "[UI] Agent loop failed (%s) — falling back to direct LLM call for: %s",
+                err, self._last_user_text[:60],
+            )
+            try:
+                # Remove the "API Error: ..." text we are about to overwrite
+                self.history_popup.update_last_message("")
+            except Exception:
+                pass
+            self._launch_direct_llm(
+                self.api_client,
+                self._last_user_text,
+                list(self._chat_history),
+                vision_mode=self.is_vision_enabled,
+            )
+            return
+
         try:
             self._set_send_mode()
+            self.history_popup.set_thinking_status("")
             self.history_popup.update_last_message(f"API Error: {err}")
         except Exception as e:
             logger.error(f"[UI] _on_api_error error: {e}", exc_info=True)
@@ -759,11 +845,117 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         self._set_send_mode()
         self.history_popup.update_last_message("Stopped")
 
+    @staticmethod
+    def _looks_like_chat(user_text: str) -> bool:
+        """Heuristic: is this message pure chat (no desktop action needed)?
+
+        Used to short-circuit the agent loop and answer in a single LLM call.
+        We are deliberately conservative — if there's any chance the user wants
+        a desktop action, return False and let the agent loop handle it.
+        """
+        text = (user_text or "").strip().lower()
+        if not text:
+            return True
+
+        chat_only_signals = (
+            "hello", "hi ", "hi,", "hey", "namaste", "namaskar",
+            "thanks", "thank you", "bye", "goodbye",
+            "how are you", "what's up", "kaise ho", "kya haal",
+            "who are you", "what can you do", "tell me about",
+            "explain", "what is", "what are", "why", "how does",
+            "summarize", "translate", "meaning of",
+        )
+        if any(sig in text for sig in chat_only_signals):
+            return True
+
+        # Action-ish signals → not pure chat, let the agent plan
+        action_signals = (
+            "click", "open", "close", "launch", "start ", "stop ",
+            "type ", "search for", "play ", "download", "install",
+            "navigate to", "go to", "visit", "scroll", "drag",
+            "select", "press", "save ", "delete ", "rename",
+            "maximize", "minimize", "switch to", "run ", "execute",
+            "browser", "tab", "window", "file", "folder",
+            "youtube", "google", "gmail", "notepad", "vscode",
+            "code ", "script", "command",
+        )
+        if any(sig in text for sig in action_signals):
+            return False
+
+        # Short messages without action verbs are usually chat
+        if len(text.split()) <= 8:
+            return True
+
+        # Long messages without action signals: treat as chat (questions etc.)
+        return True
+
     def _create_worker(self, api_client, message, history, vision_mode=False):
-        worker = APIServerWorker(api_client, message, history, vision_mode=vision_mode)
-        worker.chunk_received.connect(self._on_api_chunk)
-        worker.thinking_changed.connect(self.history_popup.update_thinking)
-        worker.finished_response.connect(self._on_api_finished)
+        user_input = message if isinstance(message, str) else ""
+
+        # Short-circuit: when vision is OFF and the message looks like pure chat,
+        # skip the entire agent loop and call the LLM directly. The agent loop is
+        # designed for multi-step desktop automation — running it on "hello" causes
+        # a 10-iteration doom loop and a 30-second wait for no reason.
+        if not vision_mode and self._looks_like_chat(user_input):
+            logger.info("[Worker] Chat-mode short-circuit (no agent loop) for: %s", user_input[:60])
+            prompted_history = self._build_history_with_prompt(list(history))
+            self._chat_history.append(
+                {"role": "user", "content": user_input}
+            )
+            self._launch_direct_llm(api_client, user_input, prompted_history, vision_mode=False)
+            return self.worker
+
+        # Build AgentManager and wrap it in AgentWorker for step‑by‑step UI updates
+        agent_manager = AgentManager(api_client, get_registry(), self.settings)
+        # Attach session info for optional compaction signals
+        agent_manager.session_service = self.session_service
+        agent_manager._session_id = self.session_id
+        # The original user message (text) is used as the AgentWorker input
+        user_input = message if isinstance(message, str) else ""
+        worker = AgentWorker(agent_manager, user_input)
+        # Connect AgentWorker signals to ThinkingPanel UI
+        worker.plan_created.connect(self.thinking_panel.set_plan)
+        worker.step_started.connect(lambda label, desc: self.thinking_panel.add_step(label, desc))
+        worker.step_completed.connect(lambda label, status, result: self.thinking_panel.update_step(label, "success", result))
+        worker.step_failed.connect(lambda label, err: self.thinking_panel.update_step(label, "failed", err))
+        worker.doom_loop_detected.connect(self.thinking_panel.show_doom_loop)
+        worker.permission_required.connect(self.thinking_panel.show_permission_request)
         worker.error_occurred.connect(self._on_api_error)
+        # When agent finishes, format results. If results are empty, fall back to direct LLM call.
+        # Build a clean history for the fallback that contains the user's original text (not the vision payload)
+        fallback_history = [m for m in list(history) if m.get("role") != "user"]
+        fallback_history.append({"role": "user", "content": user_input})
+        worker.finished.connect(
+            lambda results: self._on_agent_finished(results, api_client, user_input, fallback_history, vision_mode)
+        )
+        # Connect resume/abort from panel to worker actions
+        self.thinking_panel.resume_requested.connect(worker.resume_from_doom_loop)
+        self.thinking_panel.abort_requested.connect(worker.abort_agent)
+        self.thinking_panel.permission_response.connect(lambda tool, allowed: worker.handle_permission_response(tool, allowed))
         worker.start()
         return worker
+
+    def _on_agent_finished(self, results, api_client, user_text, history, vision_mode):
+        """Handle agent completion — fall back to direct LLM call if no usable text."""
+        formatted = self._format_results(results)
+        if formatted:
+            self._on_api_finished(formatted)
+            return
+
+        # Agent produced no usable text — fall back to direct LLM call for simple text responses
+        logger.info("[Agent] No usable results from agent loop — falling back to direct LLM call")
+        self._launch_direct_llm(api_client, user_text, history, vision_mode)
+
+    def _launch_direct_llm(self, api_client, user_text, history, vision_mode):
+        """Start a direct APIServerWorker as a fallback (no agent loop).
+
+        The "✨ Thinking…" placeholder was already added by _handle_api (or by
+        the agent worker's start), so we deliberately do NOT add a second one.
+        Streamed chunks will update the existing bubble via _on_api_chunk.
+        """
+        direct_worker = APIServerWorker(api_client, user_text, list(history), vision_mode=vision_mode)
+        direct_worker.chunk_received.connect(self._on_api_chunk)
+        direct_worker.finished_response.connect(self._on_api_finished)
+        direct_worker.error_occurred.connect(self._on_api_error)
+        direct_worker.start()
+        self.worker = direct_worker

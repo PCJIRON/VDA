@@ -37,14 +37,20 @@ class BaseClient(ABC):
         )
 
     @staticmethod
-    def _get_system_prompt() -> str:
-        return build_system_prompt()
+    def _get_system_prompt(vision_mode: bool = False) -> str:
+        return build_system_prompt(vision_mode=vision_mode)
 
     def _ensure_system_prompt(self, messages: list, vision_mode: bool) -> None:
         if vision_mode:
             has_system = any(m.get("role") == "system" for m in messages)
             if not has_system:
-                messages.insert(0, {"role": "system", "content": self._get_system_prompt()})
+                messages.insert(0, {"role": "system", "content": self._get_system_prompt(vision_mode=True)})
+        else:
+            # Chat mode: always inject the chat assistant prompt so the LLM
+            # knows it is in chat mode and should NOT emit JSON action blocks.
+            has_system = any(m.get("role") == "system" for m in messages)
+            if not has_system:
+                messages.insert(0, {"role": "system", "content": self._get_system_prompt(vision_mode=False)})
 
     @staticmethod
     def _build_user_content(message: str | list, attachments: list | None) -> Tuple[List[Dict[str, Any]], Optional[str]]:

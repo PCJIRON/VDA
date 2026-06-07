@@ -24,10 +24,31 @@ class MessageBubble(QWidget):
         self.sender = sender
         self._thinking_visible = False
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(16, 12, 16, 12)
+        self.layout.setContentsMargins(14, 6, 14, 6)
+        self.layout.setSpacing(0)
+
+        # Row: avatar + bubble
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+
+        # Avatar circle
+        avatar = QLabel("\U0001F464" if sender == "user" else "\u2728")
+        avatar.setFixedSize(28, 28)
+        avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if sender == "user":
+            avatar.setStyleSheet(
+                "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #9333ea, stop:1 #2563eb); "
+                "color: white; border-radius: 14px; font-size: 14px; font-weight: bold;"
+            )
+        else:
+            avatar.setStyleSheet(
+                "background: #1f2937; color: #fde68a; border-radius: 14px; font-size: 14px;"
+            )
+        avatar.setMaximumSize(28, 28)
 
         self.frame = QFrame()
-        self.frame.setMaximumWidth(280)
+        self.frame.setMaximumWidth(340)
         self.frame_layout = QVBoxLayout(self.frame)
         self.frame_layout.setContentsMargins(12, 10, 12, 10)
         self.frame_layout.setSpacing(6)
@@ -43,7 +64,7 @@ class MessageBubble(QWidget):
         else:
             self.frame.setStyleSheet("""
                 QFrame {
-                    background-color: white;
+                    background-color: #ffffff;
                     color: #1f2937;
                     border: 1px solid #e5e7eb;
                     border-radius: 16px;
@@ -136,16 +157,17 @@ class MessageBubble(QWidget):
 
         self.frame_layout.addLayout(footer_layout)
 
-        outer_layout = QHBoxLayout()
-        outer_layout.setContentsMargins(0, 0, 0, 0)
+        # Assemble: avatar + bubble (+ stretch) depending on sender
         if sender == "user":
-            outer_layout.addStretch()
-            outer_layout.addWidget(self.frame)
+            row.addStretch()
+            row.addWidget(self.frame)
+            row.addWidget(avatar)
         else:
-            outer_layout.addWidget(self.frame)
-            outer_layout.addStretch()
+            row.addWidget(avatar)
+            row.addWidget(self.frame)
+            row.addStretch()
 
-        self.layout.addLayout(outer_layout)
+        self.layout.addLayout(row)
 
     def _copy_text(self):
         clipboard = QApplication.clipboard()

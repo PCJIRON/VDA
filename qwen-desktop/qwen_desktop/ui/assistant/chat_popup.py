@@ -1,4 +1,10 @@
-"""Chat history popup — session list, message display, staging area for attachments."""
+"""Chat history popup — clean conversation view (ChatGPT/Claude style).
+
+- Session list hidden by default — accessed via ☰ toggle
+- Chat bubbles use sender colors and avatars
+- No thinking panel — clean chat-only view
+- Friendly empty-state copy
+"""
 
 import logging
 
@@ -21,12 +27,14 @@ logger = logging.getLogger(__name__)
 
 
 class ChatHistoryPopup(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, thinking_panel=None, parent=None):
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.SubWindow | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(600, 450)
+        self.setFixedSize(600, 500)
         self._last_ai_bubble = None
+        # thinking_panel parameter kept for backward compat but no longer embedded
+        self._sessions_visible = False
 
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(10, 10, 10, 10)
@@ -44,6 +52,7 @@ class ChatHistoryPopup(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
+        # === HEADER ===
         header = QFrame()
         header.setStyleSheet("""
             QFrame {
@@ -53,10 +62,26 @@ class ChatHistoryPopup(QWidget):
             }
         """)
         h_layout = QHBoxLayout(header)
-        h_layout.setContentsMargins(16, 12, 16, 12)
+        h_layout.setContentsMargins(14, 10, 14, 10)
+        h_layout.setSpacing(8)
 
-        title = QLabel("Conversation")
-        title.setStyleSheet("color: white; font-weight: bold; background: transparent;")
+        # Sessions toggle button (☰) — hidden by default, opens sidebar
+        self.sessions_btn = QPushButton("\u2630")
+        self.sessions_btn.setFixedSize(28, 28)
+        self.sessions_btn.setToolTip("Show chat history")
+        self.sessions_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent; color: white; border: none;
+                font-size: 18px; font-weight: bold;
+            }
+            QPushButton:hover { background: rgba(255,255,255,0.2); border-radius: 6px; }
+        """)
+        self.sessions_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.sessions_btn.clicked.connect(self._toggle_sessions)
+        h_layout.addWidget(self.sessions_btn)
+
+        title = QLabel("VDA")
+        title.setStyleSheet("color: white; font-weight: bold; font-size: 15px; background: transparent;")
         h_layout.addWidget(title)
 
         self.vision_status_lbl = QLabel("")
@@ -67,32 +92,53 @@ class ChatHistoryPopup(QWidget):
         self.vision_status_lbl.hide()
         h_layout.addWidget(self.vision_status_lbl)
 
+        self.thinking_status_lbl = QLabel("")
+        self.thinking_status_lbl.setStyleSheet(
+            "color: #fde68a; font-size: 11px; font-weight: bold; "
+            "background: rgba(0,0,0,0.25); border-radius: 6px; padding: 2px 8px;"
+        )
+        self.thinking_status_lbl.hide()
+        h_layout.addWidget(self.thinking_status_lbl)
+
+        h_layout.addStretch()
+
         self.close_btn = QPushButton("\u2715")
-        self.close_btn.setFixedSize(24, 24)
+        self.close_btn.setFixedSize(28, 28)
         self.close_btn.setStyleSheet("""
             QPushButton {
-                background: transparent; color: white; border: none; font-weight: bold;
+                background: transparent; color: white; border: none; font-size: 16px; font-weight: bold;
             }
-            QPushButton:hover { background: rgba(255,255,255,0.2); border-radius: 4px; }
+            QPushButton:hover { background: rgba(255,255,255,0.25); border-radius: 6px; }
         """)
-        h_layout.addStretch()
         h_layout.addWidget(self.close_btn)
 
         layout.addWidget(header)
 
+        # === CONTENT ===
         content_w = QWidget()
-        content_w.setStyleSheet("background-color: #ffffff; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px;")
+        content_w.setStyleSheet("""
+            QWidget {
+                background-color: #f9fafb;
+                border-bottom-left-radius: 16px;
+                border-bottom-right-radius: 16px;
+            }
+        """)
         c_layout = QHBoxLayout(content_w)
         c_layout.setContentsMargins(0, 0, 0, 0)
         c_layout.setSpacing(0)
 
+        # --- Session list (HIDDEN by default) ---
         self.session_scroll = QScrollArea()
-        self.session_scroll.setFixedWidth(200)
+        self.session_scroll.setFixedWidth(220)
         self.session_scroll.setWidgetResizable(True)
         self.session_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         scroll_style = """
-            QScrollArea { border: none; border-right: 1px solid #e5e7eb; background: transparent; }
+            QScrollArea {
+                border: none;
+                border-right: 1px solid #e5e7eb;
+                background: #f3f4f6;
+            }
             QScrollBar:vertical { border: none; background: transparent; width: 6px; margin: 0px; }
             QScrollBar::handle:vertical { background: #d1d5db; min-height: 30px; border-radius: 3px; }
             QScrollBar::handle:vertical:hover { background: #9ca3af; }
@@ -105,18 +151,29 @@ class ChatHistoryPopup(QWidget):
         self.session_list_w.setStyleSheet("background: transparent;")
         self.session_layout = QVBoxLayout(self.session_list_w)
         self.session_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.session_layout.setContentsMargins(6, 6, 6, 6)
+        self.session_layout.setContentsMargins(8, 10, 8, 10)
         self.session_layout.setSpacing(4)
 
+        # Session list header
+        session_header = QLabel("Recent chats")
+        session_header.setStyleSheet(
+            "color: #6b7280; font-size: 11px; font-weight: bold; "
+            "padding: 4px 8px 8px 8px; background: transparent;"
+        )
+        self.session_layout.addWidget(session_header)
+
         self.session_scroll.setWidget(self.session_list_w)
+        self.session_scroll.hide()  # HIDDEN BY DEFAULT
         c_layout.addWidget(self.session_scroll)
 
+        # --- Right panel: chat messages + thinking + staging ---
         right_panel_w = QWidget()
         right_panel_w.setStyleSheet("background: transparent;")
         rp_layout = QVBoxLayout(right_panel_w)
         rp_layout.setContentsMargins(0, 0, 0, 0)
         rp_layout.setSpacing(0)
 
+        # Chat messages scroll area
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -135,14 +192,24 @@ class ChatHistoryPopup(QWidget):
         self.messages_w.setStyleSheet("background: transparent;")
         self.msg_layout = QVBoxLayout(self.messages_w)
         self.msg_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.msg_layout.setContentsMargins(0, 8, 0, 8)
+        self.msg_layout.setSpacing(8)
 
         self.scroll.setWidget(self.messages_w)
-        rp_layout.addWidget(self.scroll)
+        rp_layout.addWidget(self.scroll, 1)
 
+        # Staging area for attachments
         self.staging_scroll = QScrollArea()
         self.staging_scroll.setFixedHeight(95)
         self.staging_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.staging_scroll.setStyleSheet("QScrollArea { border: none; border-top: 1px solid #e5e7eb; background: #f9fafb; border-bottom-right-radius: 16px; } QScrollBar {height:0px;}")
+        self.staging_scroll.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                border-top: 1px solid #e5e7eb;
+                background: #ffffff;
+            }
+            QScrollBar {height:0px;}
+        """)
 
         self.staging_w = QWidget()
         self.staging_w.setStyleSheet("background: transparent;")
@@ -157,32 +224,78 @@ class ChatHistoryPopup(QWidget):
 
         rp_layout.addWidget(self.staging_scroll)
 
-        c_layout.addWidget(right_panel_w)
+        c_layout.addWidget(right_panel_w, 1)
 
         layout.addWidget(content_w)
 
         outer_layout.addWidget(self.container)
 
+    def _toggle_sessions(self):
+        """Show/hide the session list sidebar."""
+        self._sessions_visible = not self._sessions_visible
+        if self._sessions_visible:
+            self.session_scroll.show()
+            self.sessions_btn.setStyleSheet("""
+                QPushButton {
+                    background: rgba(255,255,255,0.25); color: white; border: none;
+                    font-size: 18px; font-weight: bold; border-radius: 6px;
+                }
+                QPushButton:hover { background: rgba(255,255,255,0.35); }
+            """)
+        else:
+            self.session_scroll.hide()
+            self.sessions_btn.setStyleSheet("""
+                QPushButton {
+                    background: transparent; color: white; border: none;
+                    font-size: 18px; font-weight: bold;
+                }
+                QPushButton:hover { background: rgba(255,255,255,0.2); border-radius: 6px; }
+            """)
+
     def populate_sessions(self, sessions, click_callback):
-        while self.session_layout.count():
-            item = self.session_layout.takeAt(0)
+        """Replace the session list with the given sessions."""
+        # Clear existing items except the header
+        while self.session_layout.count() > 1:
+            item = self.session_layout.takeAt(1)
             if item.widget():
                 item.widget().deleteLater()
+
+        if not sessions:
+            empty = QLabel("No previous chats")
+            empty.setStyleSheet(
+                "color: #9ca3af; font-size: 11px; font-style: italic; "
+                "padding: 12px 8px; background: transparent;"
+            )
+            empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.session_layout.addWidget(empty)
+            self.session_layout.addStretch()
+            return
 
         for s in sessions:
             title = s['title']
             preview = s.get('last_msg', '')
+            preview = preview[:30] + ('\u2026' if len(preview) > 30 else '')
             btn = QPushButton(f"{title}\n{preview}")
             btn.setStyleSheet("""
                 QPushButton {
-                    background: transparent; color: #4b5563; text-align: center; padding: 10px;
-                    border-radius: 6px; font-size: 11px; font-weight: 500;
+                    background: transparent;
+                    color: #374151;
+                    text-align: left;
+                    padding: 10px 12px;
+                    border-radius: 8px;
+                    font-size: 12px;
+                    font-weight: 500;
+                    border: 1px solid transparent;
                 }
-                QPushButton:hover { background-color: #e5e7eb; color: #1f2937; }
+                QPushButton:hover {
+                    background-color: #ffffff;
+                    border: 1px solid #e5e7eb;
+                }
             """)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda checked, u=s['id']: click_callback(u))
             self.session_layout.addWidget(btn)
+        self.session_layout.addStretch()
 
     def clear_chat(self):
         while self.msg_layout.count():
@@ -201,8 +314,19 @@ class ChatHistoryPopup(QWidget):
 
     def update_last_message(self, text):
         if self._last_ai_bubble:
+            # Hide "(no result)" placeholder — show friendly default
+            if text.strip() in ("(no result)", "", "..."):
+                text = "\u2728 I'm working on it\u2026"
             self._last_ai_bubble.update_text(text)
             self.scroll_to_bottom()
+
+    def set_thinking_status(self, text: str):
+        """Show a small 'Thinking...' indicator in the header while the agent works."""
+        if text:
+            self.thinking_status_lbl.setText(f"\u2728 {text}")
+            self.thinking_status_lbl.show()
+        else:
+            self.thinking_status_lbl.hide()
 
     def update_thinking(self, thinking_text):
         try:

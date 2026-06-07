@@ -18,11 +18,13 @@ class TestThinkingPanel:
     """Tests for ThinkingPanel widget structure and behavior."""
 
     def test_initial_state_collapsed(self, qapp):
-        """New panel has height of 0 (collapsed)."""
+        """New panel starts collapsed — only the toggle button is visible (36px)."""
         from qwen_desktop.ui.assistant.thinking_panel import ThinkingPanel
 
         panel = ThinkingPanel()
-        assert panel.height() == 0
+        # Toggle button stays visible so the user can re-expand at any time
+        assert panel.height() == 36
+        assert panel.maximumHeight() == 36
         assert panel._expanded is False
         panel.deleteLater()
 

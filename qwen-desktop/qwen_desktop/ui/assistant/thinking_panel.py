@@ -115,8 +115,8 @@ class ThinkingPanel(QWidget):
     abort_requested = pyqtSignal()
     permission_response = pyqtSignal(str, bool)
 
-    PANEL_COLLAPSED = 0
-    PANEL_MAX = 300
+    PANEL_COLLAPSED = 36
+    PANEL_MAX = 250
     ANIMATION_DURATION = 200
 
     def __init__(self, parent=None) -> None:
@@ -314,9 +314,9 @@ class ThinkingPanel(QWidget):
         self._animation.setDuration(self.ANIMATION_DURATION)
         self._animation.setEasingCurve(QEasingCurve.Type.OutCubic)
 
-        # Start collapsed
-        self.setFixedHeight(0)
-        self.setMaximumHeight(0)
+        # Start collapsed — only the toggle button is visible
+        self.setMinimumHeight(36)
+        self.setMaximumHeight(36)
 
     # ---- Public API ----
 
@@ -333,10 +333,6 @@ class ThinkingPanel(QWidget):
             self._steps_layout.count() - 1, step
         )
         self._steps.append(step)
-
-        # Auto-expand when steps appear
-        if not self._expanded:
-            self.toggle()
 
         # Auto-scroll to bottom
         self._scroll_to_bottom()
@@ -437,20 +433,21 @@ class ThinkingPanel(QWidget):
         """Animate collapse/expand using QPropertyAnimation.
 
         Per D-01: 200ms, OutCubic easing.
-        Target height: 0 (collapsed) or calculated content height (expanded).
+        Collapsed state keeps the toggle button visible (36px) so the user
+        can re-expand the panel at any time.
         """
         self._animation.stop()
 
         if self._expanded:
-            # Collapse
+            # Collapse back to toggle button only
             self._animation.setStartValue(self.maximumHeight())
             self._animation.setEndValue(self.PANEL_COLLAPSED)
             self._animation.finished.connect(self._on_collapsed)
             self._toggle_btn.setText("🤔 Thinking  ▲")
         else:
-            # Expand
-            content_height = self._calculate_content_height()
-            self._animation.setStartValue(0)
+            # Expand to full content height (toggle button + steps)
+            content_height = self._calculate_content_height() + self.PANEL_COLLAPSED
+            self._animation.setStartValue(self.PANEL_COLLAPSED)
             self._animation.setEndValue(content_height)
             self.setMaximumHeight(content_height)
             self._toggle_btn.setText("🤔 Thinking  ▼")
@@ -468,12 +465,10 @@ class ThinkingPanel(QWidget):
         """
         height = 0
 
-        # Header button
-        height += 36
-
         # Step widgets
         step_count = len(self._steps)
-        height += step_count * 30  # 28px step + 2px spacing
+        if step_count > 0:
+            height += step_count * 30  # 28px step + 2px spacing
 
         # Doom loop widget if visible
         if self._doom_loop_widget.isVisible():
@@ -484,18 +479,19 @@ class ThinkingPanel(QWidget):
             height += 60
 
         # Padding
-        height += 16
+        height += 12
 
         return min(height, self.PANEL_MAX)
 
     def _on_collapsed(self) -> None:
-        """Clean up after collapse animation completes."""
+        """Clean up after collapse animation completes — keep toggle button visible."""
         try:
             self._animation.finished.disconnect(self._on_collapsed)
         except Exception:
             pass
-        self.setMaximumHeight(0)
-        self.setFixedHeight(0)
+        self.setMaximumHeight(self.PANEL_COLLAPSED)
+        self.setMinimumHeight(self.PANEL_COLLAPSED)
+        self.setFixedHeight(self.PANEL_COLLAPSED)
 
     def _scroll_to_bottom(self) -> None:
         """Scroll the scroll area to show the latest step."""
