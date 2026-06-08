@@ -60,6 +60,8 @@ class ZenClient(BaseClient):
 
             if response.status_code == 401:
                 return False, "Invalid or missing API key — get one at https://opencode.ai/zen"
+            if response.status_code == 429:
+                return False, "Rate limit exceeded — wait a moment and try again, or switch to a different model."
             if response.status_code == 500:
                 return False, "Zen server error (500) — the service may be down or your key lacks billing. Try a free model like deepseek-v4-flash-free without a key, or visit console.opencode.ai"
 
@@ -77,6 +79,8 @@ class ZenClient(BaseClient):
     def _handle_stream_error(self, response: httpx.Response, provider_name: str) -> str:
         if response.status_code == 401:
             return "Error: Invalid or missing API key. Get one at https://opencode.ai/zen or use a free model without a key."
+        if response.status_code == 429:
+            return self._handle_429_error(provider_name, 5.0)
         if response.status_code == 500:
             return "Error: Zen server error (500). Try a free model like deepseek-v4-flash-free without an API key, or visit console.opencode.ai to set up billing."
         return f"Error: API returned {response.status_code}. Check your API key and model name."
@@ -87,6 +91,7 @@ class ZenClient(BaseClient):
         conversation_history: List[Dict[str, Any]],
         attachments: Optional[List] = None,
         vision_mode: bool = False,
+        max_tokens: Optional[int] = None,
     ) -> AsyncGenerator[str, None]:
         model = self._config.get_model()
         messages = conversation_history.copy()
@@ -99,32 +104,16 @@ class ZenClient(BaseClient):
 
         logger.info(f"Sending {len(messages)} messages to OpenCode Zen model {model}")
 
-        client = self._create_client()
-        try:
-            payload = self._build_payload(model, messages)
+        client = self._get_or_create_client()
+        payload = self._build_payload(model, messages, max_tokens=max_tokens)
 
-            async with client.stream("POST", "/chat/completions", json=payload) as response:
-                if response.status_code != 200:
-                    error_text = await response.aread()
-                    logger.error(f"OpenCode Zen API error {response.status_code}: {error_text}")
-                    yield self._handle_stream_error(response, "Zen")
-                    return
-
-                line_count = 0
-                async for chunk in self._parse_sse_stream(response, "Zen"):
-                    line_count += 1
-                    if line_count == 1:
-                        logger.info("[ZenClient] First chunk received")
-                    yield chunk
-                logger.info(f"[ZenClient] Stream ended: {line_count} total chunks")
-
-        except httpx.TimeoutException:
-            yield "Error: Request timed out. Check your internet connection."
-        except Exception as e:
-            logger.error(f"OpenCode Zen API error: {e}", exc_info=True)
-            yield f"Error: {e}"
-        finally:
-            await client.aclose()
+        line_count = 0
+        async for chunk in self._stream_with_retry(client, payload, "Zen"):
+            line_count += 1
+            if line_count == 1:
+                logger.info("[ZenClient] First chunk received")
+            yield chunk
+        logger.info(f"[ZenClient] Stream ended: {line_count} total chunks")
 
     async def chat(
         self,
@@ -136,5 +125,5 @@ class ZenClient(BaseClient):
     ) -> AsyncGenerator[str, None]:
         current_message = messages[-1]["content"] if messages else ""
         history = messages[:-1] if len(messages) > 1 else []
-        async for chunk in self.send_message(current_message, history):
+        async for chunk in self.send_message(current_message, history, max_tokens=max_tokens):
             yield chunk

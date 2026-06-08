@@ -129,7 +129,18 @@ class EnhancedExecutor:
 
         action = data.get("action", "click")
         target = data.get("target") or data.get("target_normalized") or data.get("coordinates")
+        
         if not target or len(target) < 2:
+            if action in ["type", "wait"]:
+                return {
+                    "action": action,
+                    "x": 0,
+                    "y": 0,
+                    "text": data.get("text", ""),
+                    "target_name": data.get("target_name", ""),
+                    "description": data.get("description", ""),
+                    "confidence": float(data.get("confidence", 1.0)),
+                }
             return None
 
         sx, sy = convert_to_screen(
@@ -142,6 +153,7 @@ class EnhancedExecutor:
             "action": action,
             "x": sx,
             "y": sy,
+            "text": data.get("text", ""),
             "target_name": data.get("target_name", ""),
             "description": data.get("description", ""),
             "confidence": float(data.get("confidence", 0.5)),
@@ -150,6 +162,39 @@ class EnhancedExecutor:
     def execute(self, parsed: dict) -> bool:
         action = parsed["action"]
         x, y = parsed["x"], parsed["y"]
+        target_name = parsed.get("target_name")
+
+        template_matched = False
+
+        # Prioritize matching from user's saved UIED templates if target_name is provided
+        if target_name and action in (self.CLICK, self.DOUBLE_CLICK, self.RIGHT_CLICK, self.MOVE):
+            template_dir = os.path.join(os.path.expanduser("~"), ".qwen_desktop", "uied_templates")
+            if os.path.exists(template_dir):
+                import glob
+                # Find templates that match the target name
+                normalized_target = target_name.lower().replace(" ", "_").replace(".png", "")
+                
+                # 1. Try exact matches first
+                matched_paths = []
+                for ext in ["*.png", "*.jpg", "*.jpeg"]:
+                    for tpath in glob.glob(os.path.join(template_dir, ext)):
+                        basename = os.path.basename(tpath).lower().replace(ext[1:], "")
+                        if normalized_target in basename or basename in normalized_target:
+                            matched_paths.append(tpath)
+                
+                # 2. Match with template
+                for tpath in matched_paths:
+                    res = self.find_with_template(tpath, threshold=0.75)
+                    if res:
+                        x, y = res
+                        logger.info(f"[EnhancedExecutor] Found '{target_name}' via template matching at ({x}, {y})")
+                        template_matched = True
+                        break
+
+        if action in (self.CLICK, self.DOUBLE_CLICK, self.RIGHT_CLICK, self.MOVE):
+            if not template_matched:
+                logger.error(f"[EnhancedExecutor] STRICT MODE: Action '{action}' on '{target_name}' failed because template matching was not successful.")
+                return False
 
         if action == "type":
             text = parsed.get("text", "")

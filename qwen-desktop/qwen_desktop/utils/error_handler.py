@@ -68,8 +68,9 @@ def get_user_message(error_type: ErrorType, details: str = "") -> str:
             "Authentication failed. Please log in again to continue."
         ),
         ErrorType.RATE_LIMIT: (
-            "Rate limit exceeded. You've used your free quota for today. "
-            "Please wait until tomorrow or upgrade your plan."
+            "Rate limit exceeded. The API provider is throttling requests. "
+            "VDA will retry automatically with backoff. If this persists, "
+            "wait a minute or switch to a provider with higher rate limits."
         ),
         ErrorType.NETWORK_ERROR: (
             "Network error. Please check your internet connection and try again."
@@ -99,7 +100,7 @@ def get_suggested_action(error_type: ErrorType) -> str:
     """
     actions = {
         ErrorType.AUTH_ERROR: "Click 'Login' to re-authenticate",
-        ErrorType.RATE_LIMIT: "Wait 24 hours for quota reset",
+        ErrorType.RATE_LIMIT: "Wait ~30s, then retry (VDA auto-retries with backoff)",
         ErrorType.NETWORK_ERROR: "Check connection, then retry",
         ErrorType.SERVER_ERROR: "Wait a moment, then retry",
         ErrorType.FILE_ERROR: "Check file and try again",

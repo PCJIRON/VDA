@@ -33,7 +33,7 @@ class MessageBubble(QWidget):
         row.setSpacing(8)
 
         # Avatar circle
-        avatar = QLabel("\U0001F464" if sender == "user" else "\u2728")
+        avatar = QLabel("\U0001F464" if sender == "user" else "")
         avatar.setFixedSize(28, 28)
         avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         if sender == "user":
@@ -42,8 +42,24 @@ class MessageBubble(QWidget):
                 "color: white; border-radius: 14px; font-size: 14px; font-weight: bold;"
             )
         else:
+            import os
+            from PyQt6.QtGui import QPainter
+            from PyQt6.QtSvg import QSvgRenderer
+            svg_path = os.path.join(os.path.dirname(__file__), "..", "assets", "star.svg")
+            renderer = QSvgRenderer(svg_path)
+            pixmap = QPixmap(18, 18)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            if renderer.isValid():
+                painter = QPainter(pixmap)
+                renderer.render(painter)
+                painter.end()
+                avatar.setPixmap(pixmap)
+            else:
+                avatar.setText("★")
+                avatar.setStyleSheet("color: white; font-size: 14px;")
+            
             avatar.setStyleSheet(
-                "background: #1f2937; color: #fde68a; border-radius: 14px; font-size: 14px;"
+                "background: #0B0F19; border: 1px solid rgba(147, 51, 234, 0.4); border-radius: 14px;"
             )
         avatar.setMaximumSize(28, 28)
 
@@ -64,9 +80,9 @@ class MessageBubble(QWidget):
         else:
             self.frame.setStyleSheet("""
                 QFrame {
-                    background-color: #ffffff;
-                    color: #1f2937;
-                    border: 1px solid #e5e7eb;
+                    background-color: #151924;
+                    color: #F8FAFC;
+                    border: 1px solid #2A2F42;
                     border-radius: 16px;
                 }
             """)
@@ -88,11 +104,11 @@ class MessageBubble(QWidget):
             self._thinking_toggle = QPushButton("\u2699 Thinking...")
             self._thinking_toggle.setStyleSheet("""
                 QPushButton {
-                    background: transparent; color: #6b7280; border: 1px solid #e5e7eb;
+                    background: transparent; color: #94A3B8; border: 1px solid #2A2F42;
                     border-radius: 4px; padding: 2px 6px; font-size: 10px;
                     text-align: left;
                 }
-                QPushButton:hover { background: #f3f4f6; }
+                QPushButton:hover { background: #1E293B; }
             """)
             self._thinking_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
             self._thinking_toggle.hide()
@@ -102,8 +118,8 @@ class MessageBubble(QWidget):
             self._thinking_content = QLabel("")
             self._thinking_content.setWordWrap(True)
             self._thinking_content.setStyleSheet("""
-                background: #f9fafb; color: #6b7280; border: none;
-                border-left: 2px solid #d1d5db; padding: 4px 8px;
+                background: #0B0F19; color: #94A3B8; border: none;
+                border-left: 2px solid #2A2F42; padding: 4px 8px;
                 font-size: 10px; font-family: monospace;
             """)
             self._thinking_content.setMaximumHeight(0)

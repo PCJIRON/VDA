@@ -44,6 +44,63 @@ class SettingsDialog(QDialog):
         self.setFixedSize(540, 420)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
 
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #0B0F19;
+                color: #F8FAFC;
+            }
+            QGroupBox {
+                color: #F8FAFC;
+                border: 1px solid #2A2F42;
+                border-radius: 8px;
+                margin-top: 12px;
+                padding-top: 16px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 4px;
+                color: #94A3B8;
+            }
+            QLabel { color: #F8FAFC; }
+            QLineEdit, QComboBox {
+                background-color: #151924;
+                color: #F8FAFC;
+                border: 1px solid #2A2F42;
+                border-radius: 6px;
+                padding: 6px;
+            }
+            QLineEdit:focus, QComboBox:focus {
+                border: 1px solid #9333ea;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #151924;
+                color: #F8FAFC;
+                selection-background-color: #1E293B;
+                border: 1px solid #2A2F42;
+            }
+            QPushButton {
+                background-color: #151924;
+                color: #F8FAFC;
+                border: 1px solid #2A2F42;
+                border-radius: 6px;
+                padding: 6px 12px;
+            }
+            QPushButton:hover {
+                background-color: #1E293B;
+            }
+            QPushButton:pressed {
+                background-color: #334155;
+            }
+            QPushButton:checked {
+                background-color: #1E293B;
+                border: 1px solid #9333ea;
+            }
+        """)
+
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
@@ -58,7 +115,7 @@ class SettingsDialog(QDialog):
             "Select your AI provider, enter the API key, and pick a model."
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #6b7280; font-size: 12px;")
+        desc.setStyleSheet("color: #94A3B8; font-size: 12px;")
         layout.addWidget(desc)
 
         # Provider dropdown
@@ -140,11 +197,11 @@ class SettingsDialog(QDialog):
         self.test_btn = QPushButton("Test Connection")
         self.test_btn.setStyleSheet("""
             QPushButton {
-                background: #374151; color: white; border: none;
+                background: #151924; color: #F8FAFC; border: 1px solid #2A2F42;
                 border-radius: 6px; padding: 8px 18px; font-weight: bold;
             }
-            QPushButton:hover { background: #4b5563; }
-            QPushButton:disabled { background: #6b7280; color: #9ca3af; }
+            QPushButton:hover { background: #1E293B; }
+            QPushButton:disabled { background: #0B0F19; color: #475569; }
         """)
         self.test_btn.clicked.connect(self._on_test)
         self.test_status = QLabel()
@@ -160,10 +217,11 @@ class SettingsDialog(QDialog):
         save_btn = QPushButton("Save")
         save_btn.setStyleSheet("""
             QPushButton {
-                background: #6366f1; color: white; border: none;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #9333ea, stop:1 #2563eb); 
+                color: white; border: none;
                 border-radius: 6px; padding: 8px 24px; font-weight: bold;
             }
-            QPushButton:hover { background: #4f46e5; }
+            QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #a855f7, stop:1 #3b82f6); }
         """)
         save_btn.clicked.connect(self._on_save)
 

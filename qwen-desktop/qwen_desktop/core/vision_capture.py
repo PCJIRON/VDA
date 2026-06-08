@@ -187,8 +187,11 @@ class VisionCaptureService(QObject):
                     (new_w, new_h), Image.LANCZOS
                 )
 
+            if PIL_OK:
+                screenshot = screenshot.convert("RGB")
+
             buf = io.BytesIO()
-            screenshot.save(buf, format="PNG", optimize=True)
+            screenshot.save(buf, format="JPEG", quality=80, optimize=True)
             b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
 
             metadata = {

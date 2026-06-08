@@ -1,13 +1,10 @@
 {
-  "version": "1.0",
-  "timestamp": "2026-06-06T21:51:56.412Z",
+  "version": "1.1",
+  "timestamp": "2026-06-07T10:00:00.000Z",
   "phase": "02",
   "phase_name": "Agent Core",
   "phase_dir": ".planning/phases/02-agent-core",
-  "plan": null,
-  "task": null,
-  "total_tasks": null,
-  "status": "paused",
+  "status": "in_progress_uats_pending_user_verification",
   "completed_plans": [
     {"id": "02-01", "name": "Tool Registry", "status": "done"},
     {"id": "02-02", "name": "AgentManager + DoomDetector + PermissionSystem", "status": "done"},
@@ -17,54 +14,121 @@
   "remaining_plans": [
     {"id": "02-05", "name": "PermissionSystem Enforcement Integration", "status": "not_started"}
   ],
+  "agent_redesign": {
+    "name": "Re-plan-per-step",
+    "status": "implemented_uncommitted -> committed 42af509",
+    "rationale": "Static plan-then-execute caused 50-66% wasted LLM calls. Each PLAN call now sees freshest screenshot + step history, returns 1 action or done: true. Verification is implicit (next PLAN observes new screen).",
+    "state_machine": "INIT -> PLAN (screenshot+LLM) -> EXECUTE (1 action) -> VERIFY (no-op) -> PLAN (re-plan) -> ... -> COMPLETE",
+    "llm_message_format": {
+      "system": "DESKTOP_AUTOMATION_SYSTEM_PROMPT",
+      "user": [
+        {"type": "text", "text": "USER TASK: ... STEPS COMPLETED: ... decide next action or done: true"},
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}
+      ]
+    },
+    "action_json_shapes": {
+      "next_step": {"action": "click|double_click|right_click|move|type|scroll|key|wait", "target": [x, y], "target_name": "string", "description": "string", "confidence": 0.0-1.0},
+      "completion": {"done": true, "summary": "string"}
+    },
+    "max_iterations": 30,
+    "screenshot_resize": "1280x720 JPEG q=80 (from 1920x1080 PNG, ~70% smaller)",
+    "history_cap": 8
+  },
+  "system_prompts": {
+    "CHAT_ASSISTANT_SYSTEM_PROMPT": "Used when vision_mode=False. VDA persona, Hinglish-friendly, no JSON, no fabricated actions.",
+    "DESKTOP_AUTOMATION_SYSTEM_PROMPT": "Used when vision_mode=True. Re-plan-per-step design with done: true field.",
+    "DESKTOP_AUTOMANT_SYSTEM_PROMPT": "Deprecated alias for back-compat."
+  },
   "uat_issues": [
     {
       "test": 1,
       "name": "ThinkingPanel appears below chat input",
       "status": "fix_applied_not_verified",
-      "fix": "Restored _handle_api method def, added _format_results helper, connected AgentWorker.finished signal"
+      "fix": "Black ThinkingPanel block removed from chat_popup.py (lines 175-192 deleted). Replaced with simple progress dot animation."
     },
     {
       "test": 2,
       "name": "Floating assistant on-screen at startup",
       "status": "fix_applied_not_verified",
       "fix": "Added showEvent override clamping position to screen availableGeometry"
+    },
+    {
+      "test": 3,
+      "name": "OpenCode Zen free model 401 Unauthorized",
+      "status": "fix_verified",
+      "fix": "ZenClient._get_headers() only adds Authorization when real key set; keyring namespaced by provider (api_key:<provider>) to prevent cross-provider leakage"
+    },
+    {
+      "test": 4,
+      "name": "Chat-mode latency / empty responses",
+      "status": "fix_applied_not_verified",
+      "fix": "Controller short-circuits agent loop for chat messages (no vision mode). Uses CHAT_ASSISTANT_SYSTEM_PROMPT. Fallback _on_agent_finished() calls LLM directly if agent returns no usable text."
+    },
+    {
+      "test": 5,
+      "name": "Agent loop slowness (static plan) + missing tools",
+      "status": "fix_applied_not_verified",
+      "fix": "Re-plan-per-step design (commit 42af509). 1 LLM call per step, screenshot-based re-planning, done: true for completion."
     }
   ],
   "blockers": [
     {
-      "description": "Off-screen positioning fix not yet verified by user",
+      "description": "Re-plan agent design needs live verification",
       "type": "human_action",
-      "workaround": "Run py run.py and check floating assistant position"
-    },
-    {
-      "description": "AI response display fix not yet verified by user",
-      "type": "human_action",
-      "workaround": "Run py run.py, submit a message, check if model response appears in chat"
+      "workaround": "Run py run.py, test chat mode (greeting/question), then test vision mode with multi-step task"
     }
   ],
   "human_actions_pending": [
-    {"action": "Test py run.py to verify fixes", "context": "Two UAT bugs fixed: off-screen positioning + AI response display", "blocking": true}
+    {"action": "Restart py run.py, test chat mode + vision mode", "context": "All UAT fixes applied. Re-plan design + chat short-circuit + OpenCode Zen auth all wired.", "blocking": true}
   ],
   "decisions": [
     {
-      "decision": "Connected AgentWorker.finished signal with _format_results lambda instead of empty string",
-      "rationale": "AgentWorker emits results list, not streaming chunks like old APIServerWorker; need to convert to readable text",
+      "decision": "Re-plan-per-step design (replaces static plan)",
+      "rationale": "Each PLAN call sees fresh screenshot + step history. Cuts LLM calls 50-66%. Verification is implicit (next PLAN observes new screen).",
       "phase": "02"
     },
     {
-      "decision": "Added showEvent override to clamp widget to screen availableGeometry",
-      "rationale": "Initial __init__ positioning can be unreliable on DPI-scaled/multi-monitor setups; showEvent runs after widget is realized",
+      "decision": "Dual system prompts selected by vision_mode flag",
+      "rationale": "Chat persona (Hinglish, conversational) is wrong for vision mode (JSON actions). User-facing responses should never contain JSON or fabricated actions.",
+      "phase": "02"
+    },
+    {
+      "decision": "Chat-mode short-circuit in controller",
+      "rationale": "Greetings/questions/translations don't need agent loop. Skip directly to LLM call with chat prompt when vision_mode=False and message looks like chat.",
+      "phase": "02"
+    },
+    {
+      "decision": "Keyring namespaced by provider (api_key:<provider>)",
+      "rationale": "Prevents cross-provider credential leakage. Old code had single 'api_key' key that returned NVIDIA key for OpenCode Zen requests causing 401.",
+      "phase": "02"
+    },
+    {
+      "decision": "OpenCode Zen anonymous = no Authorization header at all",
+      "rationale": "Server rejects 'Bearer public' (tested: 401). Empty Authorization omitted entirely.",
+      "phase": "02"
+    },
+    {
+      "decision": "Screenshot resize to 1280x720 JPEG q=80",
+      "rationale": "Reduces image bytes ~70% (vs 1920x1080 PNG), saves LLM tokens, faster transmission.",
+      "phase": "02"
+    },
+    {
+      "decision": "max_iterations 10 -> 30",
+      "rationale": "Re-plan model needs more headroom. Old 10 limit was for static plans (fewer LLM calls).",
+      "phase": "02"
+    },
+    {
+      "decision": "Compact step history (max 8)",
+      "rationale": "Bounds token usage across long agent runs while keeping recent context.",
       "phase": "02"
     }
   ],
-  "uncommitted_files": [
-    "qwen-desktop/qwen_desktop/ui/assistant/controller.py",
-    ".planning/STATE.md",
-    ".planning/phases/02-agent-core/02-UAT.md",
-    ".planning/phases/02-agent-core/02-*.md (plan metadata)",
-    "qwen-desktop/tests/agent_manager/"
+  "next_action": "User: restart py run.py, test chat mode + vision mode. If green: execute plan 02-05. If red: debug per test case.",
+  "test_status": "173/173 pass in 3.36s (commit 42af509)",
+  "recent_commits": [
+    "42af509 feat(agent): re-plan-per-step design (1 LLM call per step)",
+    "ad4b2ab fix(ui): chat-mode fast path + dual system prompts + provider keyring isolation",
+    "455507a wip: 02-agent-core paused - 4/5 plans done, UAT fixes applied pending verification"
   ],
-  "next_action": "Run py run.py to verify both UAT fixes, then execute plan 02-05 or close UAT gaps",
-  "context_notes": "Phase 02 is 80% complete (4/5 plans). AgentWorker replaced old APIServerWorker for agent loop, but this broke AI response display in chat because AgentWorker doesn't emit streaming chunks. Fixed by formatting final results via _format_results. Off-screen issue fixed with showEvent bounds clamping. User needs to test both fixes before we proceed to plan 02-05."
+  "context_notes": "Phase 02 is 80% complete (4/5 plans done). Re-plan-per-step agent design committed (42af509). Chat-mode short-circuit + dual system prompts + provider keyring isolation committed (ad4b2ab). All 173 tests pass. User needs to verify live UI behavior before proceeding to plan 02-05."
 }

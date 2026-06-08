@@ -41,6 +41,13 @@ class ChatHistoryPopup(QWidget):
 
         self.container = QFrame()
         self.container.setObjectName("HistoryContainer")
+        self.container.setStyleSheet("""
+            #HistoryContainer {
+                background-color: #0B0F19;
+                border-radius: 16px;
+                border: 1px solid #2A2F42;
+            }
+        """)
 
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(25)
@@ -56,7 +63,8 @@ class ChatHistoryPopup(QWidget):
         header = QFrame()
         header.setStyleSheet("""
             QFrame {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #9333ea, stop:1 #2563eb);
+                background-color: #151924;
+                border-bottom: 1px solid #2A2F42;
                 border-top-left-radius: 16px;
                 border-top-right-radius: 16px;
             }
@@ -116,11 +124,16 @@ class ChatHistoryPopup(QWidget):
 
         # === CONTENT ===
         content_w = QWidget()
-        content_w.setStyleSheet("""
-            QWidget {
-                background-color: #f9fafb;
+        content_w.setStyleSheet("background: transparent;")
+        
+        # Sidebar for sessions
+        self.sidebar = QFrame()
+        self.sidebar.setFixedWidth(220)
+        self.sidebar.setStyleSheet("""
+            QFrame {
+                background-color: #151924;
+                border-right: 1px solid #2A2F42;
                 border-bottom-left-radius: 16px;
-                border-bottom-right-radius: 16px;
             }
         """)
         c_layout = QHBoxLayout(content_w)
@@ -136,12 +149,11 @@ class ChatHistoryPopup(QWidget):
         scroll_style = """
             QScrollArea {
                 border: none;
-                border-right: 1px solid #e5e7eb;
-                background: #f3f4f6;
+                background: #151924;
             }
             QScrollBar:vertical { border: none; background: transparent; width: 6px; margin: 0px; }
-            QScrollBar::handle:vertical { background: #d1d5db; min-height: 30px; border-radius: 3px; }
-            QScrollBar::handle:vertical:hover { background: #9ca3af; }
+            QScrollBar::handle:vertical { background: #334155; min-height: 30px; border-radius: 3px; }
+            QScrollBar::handle:vertical:hover { background: #475569; }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
         """
@@ -157,7 +169,7 @@ class ChatHistoryPopup(QWidget):
         # Session list header
         session_header = QLabel("Recent chats")
         session_header.setStyleSheet(
-            "color: #6b7280; font-size: 11px; font-weight: bold; "
+            "color: #64748B; font-size: 11px; font-weight: bold; "
             "padding: 4px 8px 8px 8px; background: transparent;"
         )
         self.session_layout.addWidget(session_header)
@@ -181,8 +193,8 @@ class ChatHistoryPopup(QWidget):
         msg_scroll_style = """
             QScrollArea { border: none; background: transparent; }
             QScrollBar:vertical { border: none; background: transparent; width: 6px; margin: 0px; }
-            QScrollBar::handle:vertical { background: #d1d5db; min-height: 30px; border-radius: 3px; }
-            QScrollBar::handle:vertical:hover { background: #9ca3af; }
+            QScrollBar::handle:vertical { background: #334155; min-height: 30px; border-radius: 3px; }
+            QScrollBar::handle:vertical:hover { background: #475569; }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
         """
@@ -205,8 +217,8 @@ class ChatHistoryPopup(QWidget):
         self.staging_scroll.setStyleSheet("""
             QScrollArea {
                 border: none;
-                border-top: 1px solid #e5e7eb;
-                background: #ffffff;
+                border-top: 1px solid #2A2F42;
+                background: #0B0F19;
             }
             QScrollBar {height:0px;}
         """)
@@ -237,10 +249,10 @@ class ChatHistoryPopup(QWidget):
             self.session_scroll.show()
             self.sessions_btn.setStyleSheet("""
                 QPushButton {
-                    background: rgba(255,255,255,0.25); color: white; border: none;
+                    background: rgba(255,255,255,0.1); color: white; border: none;
                     font-size: 18px; font-weight: bold; border-radius: 6px;
                 }
-                QPushButton:hover { background: rgba(255,255,255,0.35); }
+                QPushButton:hover { background: rgba(255,255,255,0.2); }
             """)
         else:
             self.session_scroll.hide()
@@ -249,7 +261,7 @@ class ChatHistoryPopup(QWidget):
                     background: transparent; color: white; border: none;
                     font-size: 18px; font-weight: bold;
                 }
-                QPushButton:hover { background: rgba(255,255,255,0.2); border-radius: 6px; }
+                QPushButton:hover { background: rgba(255,255,255,0.1); border-radius: 6px; }
             """)
 
     def populate_sessions(self, sessions, click_callback):
@@ -263,7 +275,7 @@ class ChatHistoryPopup(QWidget):
         if not sessions:
             empty = QLabel("No previous chats")
             empty.setStyleSheet(
-                "color: #9ca3af; font-size: 11px; font-style: italic; "
+                "color: #475569; font-size: 11px; font-style: italic; "
                 "padding: 12px 8px; background: transparent;"
             )
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -278,18 +290,10 @@ class ChatHistoryPopup(QWidget):
             btn = QPushButton(f"{title}\n{preview}")
             btn.setStyleSheet("""
                 QPushButton {
-                    background: transparent;
-                    color: #374151;
-                    text-align: left;
-                    padding: 10px 12px;
-                    border-radius: 8px;
-                    font-size: 12px;
-                    font-weight: 500;
-                    border: 1px solid transparent;
+                    background: transparent; color: #94A3B8; text-align: left; padding: 10px; border-radius: 8px; border: 1px solid transparent;
                 }
                 QPushButton:hover {
-                    background-color: #ffffff;
-                    border: 1px solid #e5e7eb;
+                    background: #1E293B; border: 1px solid #2A2F42; color: #F8FAFC;
                 }
             """)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -316,14 +320,14 @@ class ChatHistoryPopup(QWidget):
         if self._last_ai_bubble:
             # Hide "(no result)" placeholder — show friendly default
             if text.strip() in ("(no result)", "", "..."):
-                text = "\u2728 I'm working on it\u2026"
+                text = "I'm working on it\u2026"
             self._last_ai_bubble.update_text(text)
             self.scroll_to_bottom()
 
     def set_thinking_status(self, text: str):
         """Show a small 'Thinking...' indicator in the header while the agent works."""
         if text:
-            self.thinking_status_lbl.setText(f"\u2728 {text}")
+            self.thinking_status_lbl.setText(f"{text}")
             self.thinking_status_lbl.show()
         else:
             self.thinking_status_lbl.hide()

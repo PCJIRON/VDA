@@ -7,12 +7,13 @@ import logging
 import re
 import uuid
 
-from PyQt6.QtCore import Qt, QPoint, QEasingCurve, QTimer, QEvent, QVariantAnimation, QPropertyAnimation, QRect
-from PyQt6.QtGui import QColor, QPainter, QLinearGradient, QBrush, QCursor, QPixmap, QAction
+from PyQt6.QtCore import Qt, QPoint, QEasingCurve, QTimer, QEvent, QVariantAnimation, QPropertyAnimation, QRect, QRectF
+from PyQt6.QtGui import QColor, QPainter, QLinearGradient, QBrush, QCursor, QPixmap, QAction, QPen
 from PyQt6.QtWidgets import (
     QWidget, QLineEdit, QHBoxLayout, QPushButton, QLabel, QVBoxLayout,
     QApplication, QMenu, QFileDialog,
 )
+from PyQt6.QtSvg import QSvgRenderer
 from typing import List, Optional, Tuple
 
 from qwen_desktop.core.session_service import SessionService
@@ -63,6 +64,11 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self.is_hovered = False
         self.is_expanded = False
         self.is_dragging = False
+
+        import os
+        svg_path = os.path.join(os.path.dirname(__file__), "..", "assets", "star.svg")
+        self.star_renderer = QSvgRenderer(svg_path)
+
         self.is_vision_enabled = False
 
         self._pyautogui_mode = PyAutoGUIExecutor.ASK_FIRST
@@ -163,8 +169,8 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
                             return (cx, cy, name)
                     except:
                         continue
-            except Exception:
-                pass
+            except Exception as e:
+                logger.exception("Error while scanning taskbar UI elements")
             try:
                 active = auto.GetForegroundControl()
                 if active:
@@ -205,12 +211,15 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self.input_field.setPlaceholderText("Ask AI...")
         self.input_field.setStyleSheet("""
             QLineEdit {
-                background-color: rgba(255, 255, 255, 0.2);
+                background-color: #151924;
                 color: white;
-                border: none;
+                border: 1px solid #2A2F42;
                 border-radius: 8px;
                 padding: 8px 12px;
                 font-size: 14px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #9333ea;
             }
         """)
         self.input_field.returnPressed.connect(self.submit_message)
@@ -283,22 +292,32 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
 
         painter.setOpacity(1.0 if (self.is_hovered or self.is_expanded) else 0.8)
 
-        gradient = QLinearGradient(0, 0, width, height)
-        gradient.setColorAt(0, QColor("#9333ea"))
-        gradient.setColorAt(1, QColor("#2563eb"))
-
-        painter.setBrush(QBrush(gradient))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(0, 0, width, height, radius, radius)
+        painter.setBrush(QBrush(QColor("#0B0F19"))) # Deep Navy background
+        
+        pen = QPen(QColor("#9333ea")) # Subtle purple border
+        pen.setWidth(1)
+        painter.setPen(pen)
+        
+        # Adjust rect to account for pen width
+        painter.drawRoundedRect(0, 0, width - 1, height - 1, radius, radius)
 
         painter.setOpacity(1.0)
-        painter.setPen(QColor("white"))
-        font = self.font()
-        font.setPointSize(24)
-        painter.setFont(font)
-
-        rect = QRect(int(width - self.collapsed_size), 0, int(self.collapsed_size), int(self.collapsed_size))
-        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "\u2728")
+        
+        # Calculate rect for the SVG icon
+        icon_size = 32
+        x_pos = float(width - self.collapsed_size / 2 - icon_size / 2)
+        y_pos = float(height / 2 - icon_size / 2)
+        rect = QRectF(x_pos, y_pos, float(icon_size), float(icon_size))
+        
+        if self.star_renderer.isValid():
+            self.star_renderer.render(painter, rect)
+        else:
+            # Fallback
+            painter.setPen(QColor("white"))
+            font = self.font()
+            font.setPointSize(20)
+            painter.setFont(font)
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "★")
 
     def _on_anim_step(self, val: int):
         self.setFixedSize(val, self.collapsed_size)
@@ -467,6 +486,8 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
     def select_files(self):
         from pathlib import Path
         import base64
+        from qwen_desktop.utils.file_encoder import MAX_FILE_SIZE
+        
         files, _ = QFileDialog.getOpenFileNames(self, "Select Files", "", "All Files (*);;Images (*.png *.jpg *.jpeg *.bmp)")
         if not files:
             return
@@ -475,20 +496,24 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
             path = Path(file_path)
             content_type = "image" if path.suffix.lower() in ['.png', '.jpg', '.jpeg', '.bmp', '.gif'] else "file"
 
+            if path.stat().st_size > MAX_FILE_SIZE:
+                logger.warning(f"File {path} exceeds size limit and will be skipped.")
+                continue
+
             if content_type == "image":
                 try:
                     with open(path, "rb") as f:
                         b64 = base64.b64encode(f.read()).decode('utf-8')
                     self.staged_files.append({"type": "image", "path": str(path), "base64": b64, "name": path.name, "mime": f"image/{path.suffix[1:]}"})
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"Failed to read image file {path}: {e}")
             else:
                 try:
                     with open(path, "r", encoding="utf-8", errors="ignore") as f:
                         text = f.read()
                     self.staged_files.append({"type": "file", "path": str(path), "content": text, "name": path.name})
-                except:
-                    pass
+                except Exception as e:
+                    logger.error(f"Failed to read text file {path}: {e}")
 
         self.update_staging_ui()
 
@@ -698,7 +723,7 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         return "\n\n".join(texts)
 
     def _handle_api(self, text, attachments):
-        self.history_popup.add_message("\u2728 Thinking\u2026", "ai")
+        self.history_popup.add_message("Thinking\u2026", "ai")
         self.history_popup.set_thinking_status("Thinking\u2026")
         # Remember the original user text for fallback (vision may rewrite it)
         self._last_user_text = text or ""
@@ -720,11 +745,18 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
                 self._last_screen_resolution = (sw, sh)
                 self._last_screenshot_size = (img_w, img_h)
 
+                if sw > 800:
+                    try:
+                        img = img.resize((800, int(sh * 800 / sw)), Image.Resampling.LANCZOS)
+                    except AttributeError:
+                        img = img.resize((800, int(sh * 800 / sw)), Image.LANCZOS)
+                
+                img = img.convert("RGB")
                 buf = io.BytesIO()
-                img.save(buf, format="PNG", optimize=True, compress_level=1)
+                img.save(buf, format="JPEG", quality=65, optimize=True)
                 b64 = base64.b64encode(buf.getvalue()).decode()
 
-                logger.info(f"Vision screenshot: {img_w}x{img_h} -> Screen: {sw}x{sh}")
+                logger.info(f"Vision screenshot: {img.width}x{img.height} -> Screen: {sw}x{sh}")
 
                 vision_prompt = f"""
 [USER REQUEST]
@@ -746,7 +778,7 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
 """
                 content_payload = [
                     {"type": "text", "text": vision_prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
                 ]
 
                 logger.info(f"Vision: attached live screenshot ({len(b64)//1024}KB)")
@@ -961,14 +993,24 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         # skip the entire agent loop and call the LLM directly. The agent loop is
         # designed for multi-step desktop automation — running it on "hello" causes
         # a 10-iteration doom loop and a 30-second wait for no reason.
-        if not vision_mode and self._looks_like_chat(user_input):
-            logger.info("[Worker] Chat-mode short-circuit (no agent loop) for: %s", user_input[:60])
-            prompted_history = self._build_history_with_prompt(list(history))
-            self._chat_history.append(
-                {"role": "user", "content": user_input}
-            )
-            self._launch_direct_llm(api_client, user_input, prompted_history, vision_mode=False)
-            return self.worker
+        if not vision_mode:
+            if self._looks_like_chat(user_input):
+                logger.info("[Worker] Chat-mode short-circuit (no agent loop) for: %s", user_input[:60])
+                prompted_history = self._build_history_with_prompt(list(history))
+                self._chat_history.append(
+                    {"role": "user", "content": user_input}
+                )
+                self._launch_direct_llm(api_client, user_input, prompted_history, vision_mode=False)
+                return self.worker
+            else:
+                logger.warning("[Worker] Desktop action blocked because Vision Mode is OFF.")
+                try:
+                    self.history_popup.update_last_message("❌ Error: Desktop control requires Vision Mode to be ON. Please enable Vision Mode.")
+                    self.history_popup.set_thinking_status("")
+                    self._set_send_mode()
+                except Exception as e:
+                    logger.error(f"Error updating UI for blocked vision action: {e}")
+                return None
 
         # Build AgentManager and wrap it in AgentWorker for step‑by‑step UI updates
         # Inject a screenshot callable so the agent can grab a fresh
@@ -976,18 +1018,20 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         # Also pass the EnhancedExecutor so vision actions (click/type/
         # scroll) can be executed directly without going through the
         # generic tool registry (which only knows tool names like 'uied').
+        saved_components = self._load_saved_templates_as_components()
+        all_components = saved_components + self._uied_components if self._uied_components else saved_components
+
         agent_manager = AgentManager(
             api_client,
             get_registry(),
             self.settings,
             screenshot_fn=self._take_screenshot_b64,
             vision_executor=self._enhanced_executor,
+            components=all_components,
         )
         # Attach session info for optional compaction signals
         agent_manager.session_service = self.session_service
         agent_manager._session_id = self.session_id
-        # The original user message (text) is used as the AgentWorker input
-        user_input = message if isinstance(message, str) else ""
         worker = AgentWorker(agent_manager, user_input)
         # Connect AgentWorker signals to ThinkingPanel UI
         worker.plan_created.connect(self.thinking_panel.set_plan)

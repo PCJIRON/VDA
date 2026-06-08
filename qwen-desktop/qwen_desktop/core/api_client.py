@@ -50,6 +50,8 @@ class APIClient(BaseClient):
                 data = response.json()
                 content = data["choices"][0]["message"]["content"]
                 return True, content[:200]
+            if response.status_code == 429:
+                return False, "Rate limit exceeded — wait a moment and try again."
             error_body = await response.aread()
             return False, f"HTTP {response.status_code}: {error_body[:200].decode(errors='replace')}"
         except httpx.TimeoutException:
@@ -65,6 +67,7 @@ class APIClient(BaseClient):
         conversation_history: List[Dict[str, Any]],
         attachments: Optional[List] = None,
         vision_mode: bool = False,
+        max_tokens: Optional[int] = None,
     ) -> AsyncGenerator[str, None]:
         model = self._config.get_model()
         messages = conversation_history.copy()
@@ -78,27 +81,11 @@ class APIClient(BaseClient):
         provider_name = self._config.get_provider_name()
         logger.info(f"Sending {len(messages)} messages to {provider_name} model {model}")
 
-        client = self._create_client()
-        try:
-            payload = self._build_payload(model, messages)
+        client = self._get_or_create_client()
+        payload = self._build_payload(model, messages, max_tokens=max_tokens)
 
-            async with client.stream("POST", "/chat/completions", json=payload) as response:
-                if response.status_code != 200:
-                    error_text = await response.aread()
-                    logger.error(f"{provider_name} API error {response.status_code}: {error_text}")
-                    yield self._handle_stream_error(response, provider_name)
-                    return
-
-                async for chunk in self._parse_sse_stream(response, provider_name):
-                    yield chunk
-
-        except httpx.TimeoutException:
-            yield "Error: Request timed out. Check your internet connection."
-        except Exception as e:
-            logger.error(f"{provider_name} API error: {e}", exc_info=True)
-            yield f"Error: {e}"
-        finally:
-            await client.aclose()
+        async for chunk in self._stream_with_retry(client, payload, provider_name):
+            yield chunk
 
     async def chat(
         self,
@@ -110,5 +97,5 @@ class APIClient(BaseClient):
     ) -> AsyncGenerator[str, None]:
         current_message = messages[-1]["content"] if messages else ""
         history = messages[:-1] if len(messages) > 1 else []
-        async for chunk in self.send_message(current_message, history):
+        async for chunk in self.send_message(current_message, history, max_tokens=max_tokens):
             yield chunk

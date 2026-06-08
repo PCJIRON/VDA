@@ -17,13 +17,16 @@ Each state is handled by a dedicated async method, dispatched via a dict
 mapping states to handlers.
 """
 
+import asyncio
 import enum
 import io
 import json
 import logging
 import re
+import time
 from typing import Any, Callable, Optional
 
+from qwen_desktop.config.defaults import PROVIDERS
 from qwen_desktop.core.agent_manager.doom_detector import DoomLoopDetector
 from qwen_desktop.core.agent_manager.permission_system import PermissionSystem
 from qwen_desktop.core.default_prompt import build_system_prompt
@@ -89,6 +92,7 @@ class AgentManager:
         max_iterations: int = 30,
         screenshot_fn: Optional[ScreenshotFn] = None,
         vision_executor: Optional[Any] = None,
+        components: Optional[list[dict[str, Any]]] = None,
     ) -> None:
         self.api_client = api_client
         self.tool_registry = tool_registry
@@ -99,6 +103,10 @@ class AgentManager:
         # directly (click/type/scroll) — bypasses the tool registry which
         # only knows about generic tool names like 'uied'.
         self.vision_executor = vision_executor
+        # Saved UIED template components — used in the system prompt so
+        # the LLM can reference known element names (e.g. "Chrome")
+        # even when the model can't process screenshots.
+        self.components = components or []
 
         # State
         self.state = AgentState.IDLE
@@ -198,6 +206,10 @@ class AgentManager:
 
         self.iteration_count += 1
 
+        # Rate-limit delay between PLAN iterations to avoid 429 on
+        # providers with strict RPM limits (e.g. NVIDIA NIM).
+        await self._apply_rate_limit_delay()
+
         # 1. Capture screenshot
         screenshot_b64 = None
         if self.screenshot_fn is not None:
@@ -216,7 +228,7 @@ class AgentManager:
         system_prompt = build_system_prompt(
             screen_width=sw,
             screen_height=sh,
-            components=None,
+            components=self.components,
             vision_mode=True,
         )
 
@@ -422,6 +434,7 @@ class AgentManager:
         return (
             f"USER TASK: {self._user_input}\n\n"
             f"STEPS COMPLETED SO FAR:\n{history_block}\n\n"
+
             "Look at the current screenshot. Decide the NEXT single action, "
             "or reply with done: true if the task is complete."
         )
@@ -457,11 +470,22 @@ class AgentManager:
                 "description": "(empty LLM response — try again)",
             }
 
-        # Try to find a JSON object in the response
-        json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
+        # 1. Try to find a markdown json block (non-greedy)
+        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", response_text, re.DOTALL | re.IGNORECASE)
         if json_match:
             try:
-                parsed = json.loads(json_match.group(0))
+                parsed = json.loads(json_match.group(1))
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+
+        # 2. Try to find the first { and last } (handles chatty models without markdown)
+        start_idx = response_text.find('{')
+        end_idx = response_text.rfind('}')
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            try:
+                parsed = json.loads(response_text[start_idx:end_idx+1])
                 if isinstance(parsed, dict):
                     return parsed
             except json.JSONDecodeError:
@@ -504,6 +528,41 @@ class AgentManager:
             "target": None,
             "description": response_text[:200].strip() or "(no response)",
         }
+
+    async def _apply_rate_limit_delay(self) -> None:
+        """Enforce minimum delay between consecutive LLM calls.
+
+        Reads the provider's ``rate_limit.min_request_interval`` from the
+        PROVIDERS config and sleeps if the previous LLM call was too
+        recent. This prevents burst API calls that trigger 429 on
+        providers with strict RPM limits (e.g. NVIDIA NIM free tier).
+        """
+        if not hasattr(self, "_last_llm_call_time"):
+            self._last_llm_call_time = 0.0
+
+        # Determine the provider's rate limit config
+        provider_id = ""
+        if self.settings:
+            if hasattr(self.settings, "get"):
+                provider_id = self.settings.get("provider", "")
+            elif isinstance(self.settings, dict):
+                provider_id = self.settings.get("provider", "")
+
+        provider_info = PROVIDERS.get(provider_id, {})
+        rl = provider_info.get("rate_limit", {"min_request_interval": 1.0})
+        min_interval = rl.get("min_request_interval", 1.0)
+
+        elapsed = time.monotonic() - self._last_llm_call_time
+        if elapsed < min_interval:
+            wait = min_interval - elapsed
+            logger.info(
+                "[AgentManager] Rate-limit throttle: waiting %.1fs before next LLM call",
+                wait,
+            )
+            await asyncio.sleep(wait)
+
+        self._last_llm_call_time = time.monotonic()
+
 
     def pause(self, reason: str) -> None:
         """Pause execution for user intervention (doom loop, permission).
