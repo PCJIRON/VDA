@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "graphify": {
+      "command": "C:\\Users\\uscha\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
+      "args": [
+        "-m",
+        "graphify.serve",
+        "${workspace.path}/graphify-out/graph.json"
+      ]
+    }
+  }
+}
