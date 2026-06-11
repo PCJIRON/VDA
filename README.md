@@ -40,7 +40,7 @@
 
 2. **Install dependencies:**
    ```bash
-   cd qwen-desktop
+   cd vda-desktop
    pip install -r requirements.txt
    ```
    > *Note: VDA relies on native modules like `pyautogui`, `opencv-python`, and `rapidocr-onnxruntime`. Make sure your build tools are up to date.*

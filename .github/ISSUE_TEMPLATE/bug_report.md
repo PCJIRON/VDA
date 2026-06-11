@@ -19,7 +19,7 @@ Steps to reproduce the behavior:
 A clear and concise description of what you expected to happen.
 
 **Logs**
-If applicable, paste the relevant lines from `~/.qwen-desktop/app.log`.
+If applicable, paste the relevant lines from `~/.vda-desktop/app.log`.
 ```text
 (Paste logs here)
 ```

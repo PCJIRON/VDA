@@ -1,0 +1,18 @@
+"""Tool registry package — decorator-based registry with lazy initialization.
+
+Provides BaseTool abstract class, ToolRegistry singleton, and
+@register_tool decorator for registering tool implementations.
+"""
+
+from vda.core.tool_registry.registry import ToolRegistry, register_tool, get_registry
+from vda.core.tool_registry.base_tool import BaseTool
+
+# Import tools sub-package to trigger @register_tool decorators
+from . import tools  # noqa: F401
+
+__all__ = [
+    "ToolRegistry",
+    "BaseTool",
+    "register_tool",
+    "get_registry",
+]

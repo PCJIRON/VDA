@@ -26,20 +26,20 @@ VDA is a desktop AI agent that controls computers like a human — seeing the sc
 
 ## Languages
 
-- Python 3.9+ - Core application logic, all source code in `qwen-desktop/qwen_desktop/`
+- Python 3.9+ - Core application logic, all source code in `vda-desktop/vda/`
 - Not detected
 
 ## Runtime
 
 - CPython (standard Python runtime), requires >= 3.9
 - pip (via `requirements.txt` and `requirements-dev.txt`)
-- Build system: setuptools (configured in `qwen-desktop/pyproject.toml`)
+- Build system: setuptools (configured in `vda-desktop/pyproject.toml`)
 - Lockfile: Not detected (no `poetry.lock`, `Pipfile.lock`, or `pdm.lock` present)
 
 ## Frameworks
 
-- PyQt6 >= 6.4.0 - Desktop GUI framework used for the entire UI layer (`qwen-desktop/qwen_desktop/ui/`, `qwen_desktop/app.py`)
-- httpx >= 0.25.0 - Async HTTP client for AI API communication (`qwen-desktop/qwen_desktop/core/api_client.py`, `core/zen_client.py`)
+- PyQt6 >= 6.4.0 - Desktop GUI framework used for the entire UI layer (`vda-desktop/vda/ui/`, `vda/app.py`)
+- httpx >= 0.25.0 - Async HTTP client for AI API communication (`vda-desktop/vda/core/api_client.py`, `core/zen_client.py`)
 - `QApplication`, `QWidget`, `QLineEdit`, `QPushButton`, `QLabel`, `QVBoxLayout`, `QHBoxLayout`, `QScrollArea`, `QFrame` - Primary UI widget set
 - `QPropertyAnimation`, `QVariantAnimation`, `QEasingCurve` - Animation framework for expand/collapse transitions
 - `QThread`, `pyqtSignal` - Background threading for API streaming
@@ -78,13 +78,13 @@ VDA is a desktop AI agent that controls computers like a human — seeing the sc
 - Settings stored as JSON at platform-specific paths:
 - `python-dotenv` supports `.env` file loading (optional)
 - API keys stored via `keyring` (OS-level credential manager) or in config file
-- Logs written to `~/.qwen-desktop/app.log`
-- Conversation history stored at `~/.qwen-desktop/sessions/{project_hash}/chats/`
-- Memory/behavior data at `~/.qwen-desktop/memory/` and `~/.qwen-desktop/behavior/`
-- UIED template images at `~/.qwen_desktop/uied_templates/`
-- `pyproject.toml` at `qwen-desktop/pyproject.toml` - Project metadata, dependencies, tool configs
-- `requirements.txt` at `qwen-desktop/requirements.txt` - Runtime dependencies (24 lines)
-- `requirements-dev.txt` at `qwen-desktop/requirements-dev.txt` - Dev dependencies (14 lines)
+- Logs written to `~/.vda-desktop/app.log`
+- Conversation history stored at `~/.vda-desktop/sessions/{project_hash}/chats/`
+- Memory/behavior data at `~/.vda-desktop/memory/` and `~/.vda-desktop/behavior/`
+- UIED template images at `~/.vda/uied_templates/`
+- `pyproject.toml` at `vda-desktop/pyproject.toml` - Project metadata, dependencies, tool configs
+- `requirements.txt` at `vda-desktop/requirements.txt` - Runtime dependencies (24 lines)
+- `requirements-dev.txt` at `vda-desktop/requirements-dev.txt` - Dev dependencies (14 lines)
 
 ## Platform Requirements
 
@@ -94,7 +94,7 @@ VDA is a desktop AI agent that controls computers like a human — seeing the sc
 - macOS/Linux supported but `uiautomation` is Windows-only
 - Windows desktop (primary target, given `uiautomation`, `ctypes.windll`, DPI detection)
 - No server deployment — this is a local desktop application
-- Entry points: `py run.py` or `python -m qwen_desktop`
+- Entry points: `py run.py` or `python -m vda`
 
 <!-- GSD:stack-end -->
 
@@ -112,13 +112,13 @@ VDA is a desktop AI agent that controls computers like a human — seeing the sc
 - Private/helper methods use single underscore prefix: `_get_headers`, `_create_client`, `_load`, `_resolve_path`
 - Class methods use `@classmethod` decorator: `from_api_response`, `get_default_models`, `get_provider_models`
 - snake_case for module-level, local, and instance variables
-- Module-level logger instance: `logger = logging.getLogger(__name__)` (`qwen_desktop/utils/error_handler.py`)
+- Module-level logger instance: `logger = logging.getLogger(__name__)` (`vda/utils/error_handler.py`)
 - No special prefix for instance variables (except `self._` for private/protected)
-- UPPER_SNAKE_CASE for module-level constants: `MAX_FILE_SIZE`, `THINKING_PATTERNS`, `MEMORY_DIR`, `DEFAULT_SETTINGS`, `PROVIDERS` (`qwen_desktop/config/defaults.py`, `qwen_desktop/utils/file_encoder.py`)
-- PascalCase for class names (`DesktopApp`, `Settings`, `APIClient`, `SessionService`, `ToolExecutor`) — `qwen_desktop/app.py`, `qwen_desktop/config/settings.py`
-- PascalCase for dataclasses: `ModelInfo`, `TokenUsage`, `Attachment`, `SlashCommand` — `qwen_desktop/core/models.py`, `qwen_desktop/attachments/file_manager.py`, `qwen_desktop/core/command_registry.py`
-- PascalCase for enums: `ErrorType` with UPPER_CASE values: `AUTH_ERROR`, `RATE_LIMIT` — `qwen_desktop/utils/error_handler.py`
-- Type aliases use PascalCase: `Platform = Literal["windows", "macos", "linux", "other"]` — `qwen_desktop/utils/platform.py`
+- UPPER_SNAKE_CASE for module-level constants: `MAX_FILE_SIZE`, `THINKING_PATTERNS`, `MEMORY_DIR`, `DEFAULT_SETTINGS`, `PROVIDERS` (`vda/config/defaults.py`, `vda/utils/file_encoder.py`)
+- PascalCase for class names (`DesktopApp`, `Settings`, `APIClient`, `SessionService`, `ToolExecutor`) — `vda/app.py`, `vda/config/settings.py`
+- PascalCase for dataclasses: `ModelInfo`, `TokenUsage`, `Attachment`, `SlashCommand` — `vda/core/models.py`, `vda/attachments/file_manager.py`, `vda/core/command_registry.py`
+- PascalCase for enums: `ErrorType` with UPPER_CASE values: `AUTH_ERROR`, `RATE_LIMIT` — `vda/utils/error_handler.py`
+- Type aliases use PascalCase: `Platform = Literal["windows", "macos", "linux", "other"]` — `vda/utils/platform.py`
 
 ## Code Style
 
@@ -130,15 +130,15 @@ VDA is a desktop AI agent that controls computers like a human — seeing the sc
 - Ruff: `select = ["E", "F", "W", "I", "N", "D", "UP"]`, `ignore = ["D100", "D104"]` — `pyproject.toml`
 - MyPy configured: `python_version = "3.9"`, `warn_return_any = true`, `disallow_untyped_defs = false`, `check_untyped_defs = true` — `pyproject.toml`
 - Not enforced in CI (added as dev dependency only)
-- Run: `ruff check .`, `mypy qwen_desktop`, `black --check .`
+- Run: `ruff check .`, `mypy vda`, `black --check .`
 
 ## Import Organization
 
 - Blank line between standard library and third-party imports, and between third-party and local imports
 - Alphabetical within groups
 - `from` imports before simple `import` statements within groups
-- No path aliases; all local imports use full package path: `from qwen_desktop.config.settings import Settings`
-- Examples: `from qwen_desktop.utils.logger import setup_logger` (`qwen_desktop/app.py`), `from qwen_desktop.auth.provider_config import ProviderConfig` (`qwen_desktop/core/api_client.py`)
+- No path aliases; all local imports use full package path: `from vda.config.settings import Settings`
+- Examples: `from vda.utils.logger import setup_logger` (`vda/app.py`), `from vda.auth.provider_config import ProviderConfig` (`vda/core/api_client.py`)
 
 ## Type Hints
 
@@ -150,22 +150,22 @@ VDA is a desktop AI agent that controls computers like a human — seeing the sc
 
 ## Error Handling
 
-- Custom exception classes defined when needed: `class AuthenticationError(Exception):` (`qwen_desktop/core/api_client.py:15`)
+- Custom exception classes defined when needed: `class AuthenticationError(Exception):` (`vda/core/api_client.py:15`)
 - Try/except with specific exception types; broad `except Exception` only at top-level boundaries
-- Centralized error classification via `classify_error()` — `qwen_desktop/utils/error_handler.py`
-- Service methods often return error message strings rather than raising exceptions (e.g., `ToolExecutor.execute_tool` returns `f"Error: ..."` — `qwen_desktop/core/tool_executor.py:149`)
-- Async generators yield error messages as strings: `yield f"Error: API returned {response.status_code}."` (`qwen_desktop/core/api_client.py:142`)
-- Use `exc_info=True` with `logger.error()` to capture stack traces (`qwen_desktop/app.py:46`, `qwen_desktop/core/session_service.py:36`)
-- Bare `except:` or `except Exception` used in some session deserialization as short-circuit (`qwen_desktop/core/session_service.py:62`)
-- `try/finally` pattern for cleanup (e.g., `client.aclose()` in finally blocks — `qwen_desktop/core/api_client.py:71`)
+- Centralized error classification via `classify_error()` — `vda/utils/error_handler.py`
+- Service methods often return error message strings rather than raising exceptions (e.g., `ToolExecutor.execute_tool` returns `f"Error: ..."` — `vda/core/tool_executor.py:149`)
+- Async generators yield error messages as strings: `yield f"Error: API returned {response.status_code}."` (`vda/core/api_client.py:142`)
+- Use `exc_info=True` with `logger.error()` to capture stack traces (`vda/app.py:46`, `vda/core/session_service.py:36`)
+- Bare `except:` or `except Exception` used in some session deserialization as short-circuit (`vda/core/session_service.py:62`)
+- `try/finally` pattern for cleanup (e.g., `client.aclose()` in finally blocks — `vda/core/api_client.py:71`)
 
 ## Logging
 
 - Module-level logger: `logger = logging.getLogger(__name__)` (every module)
 - Structured format: `"%(asctime)s - %(name)s - %(levelname)s - %(message)s"`
 - Log at service boundaries and external API calls
-- Include error context: `logger.error(f"Application error: {e}", exc_info=True)` (`qwen_desktop/app.py:46`)
-- Custom prefixes in log messages: `"[STM] Task started: ..."` (`qwen_desktop/core/memory_manager.py:31`), `"[UIA] UI Automation loaded successfully"` (`qwen_desktop/ui/floating_assistant.py:39`)
+- Include error context: `logger.error(f"Application error: {e}", exc_info=True)` (`vda/app.py:46`)
+- Custom prefixes in log messages: `"[STM] Task started: ..."` (`vda/core/memory_manager.py:31`), `"[UIA] UI Automation loaded successfully"` (`vda/ui/floating_assistant.py:39`)
 - No `print()` statements in production code (only `print()` found in `file_encoder.py` line 49 in an error path; should use logger)
 
 ## Comments
@@ -184,9 +184,9 @@ VDA is a desktop AI agent that controls computers like a human — seeing the sc
 - Default parameter values for optional arguments
 - Type hints on all parameters
 - Explicit return statements with annotated return types
-- Return early for guard clauses (`if not path.exists(): return None` in `qwen_desktop/utils/file_encoder.py:28`)
+- Return early for guard clauses (`if not path.exists(): return None` in `vda/utils/file_encoder.py:28`)
 - Return `None` for expected error states (not exceptions) in utility functions
-- `Tuple[bool, str]` for validation results (`is_valid, error = manager.validate_file(...)`) — `qwen_desktop/attachments/file_manager.py:104`
+- `Tuple[bool, str]` for validation results (`is_valid, error = manager.validate_file(...)`) — `vda/attachments/file_manager.py:104`
 
 ## Module Design
 
@@ -213,43 +213,43 @@ VDA is a desktop AI agent that controls computers like a human — seeing the sc
 - Event-driven UI with QThread workers for async API calls
 - Multi-provider AI API support (OpenCode Zen, DeepSeek, OpenRouter, Gemini)
 - Desktop automation stack (vision capture → element detection → click execution)
-- File-based state persistence (JSON/JSONL in `~/.qwen-desktop/`)
+- File-based state persistence (JSON/JSONL in `~/.vda-desktop/`)
 - Template-matching for pixel-perfect UI automation
 
 ## Layers
 
 - Purpose: Bootstrap the application, parse CLI args, create main app instance
-- Location: `qwen-desktop/run.py`, `qwen_desktop/__main__.py`, `qwen_desktop/app.py`
+- Location: `vda-desktop/run.py`, `vda/__main__.py`, `vda/app.py`
 - Contains: DesktopApp class, QApplication setup, logger init
 - Depends on: Config layer (Settings), Utils (logger)
-- Used by: CLI invocation (`py run.py` or `py -m qwen_desktop`)
+- Used by: CLI invocation (`py run.py` or `py -m vda`)
 - Purpose: Render the floating assistant window and all interactive widgets
-- Location: `qwen_desktop/ui/`
+- Location: `vda/ui/`
 - Contains: `floating_assistant.py` (main widget, chat bubbles, input), `settings_dialog.py`, `uied_overlay.py`, `components/` (VisionButton, AttachButton, SendButton, SettingsButton, UIEDButton)
 - Depends on: Core layer (API clients, vision, executors), Auth layer, Config layer
 - Used by: Entry layer (DesktopApp creates FloatingAssistant)
 - Purpose: All business logic, API communication, desktop automation, and AI orchestration
-- Location: `qwen_desktop/core/`
-- Contains: APIClient, ZenClient, SessionService, VisionCapture, PyAutoGUIExecutor, EnhancedExecutor, ToolExecutor, UIEDService, OpenCVDetector, AutoTemplateExtractor, MemoryManager, BehaviorTracker, TaskDecomposer, ThinkingFilter, CommandRegistry, Models, DefaultPrompt, and multiple clicker variants (UniversalClicker, PerfectClicker, PixelPerfectClicker, QwenScreenClicker, OpencvQwenClicker, DebugClicker, LocalVisionClicker)
+- Location: `vda/core/`
+- Contains: APIClient, ZenClient, SessionService, VisionCapture, PyAutoGUIExecutor, EnhancedExecutor, ToolExecutor, UIEDService, OpenCVDetector, AutoTemplateExtractor, MemoryManager, BehaviorTracker, TaskDecomposer, ThinkingFilter, CommandRegistry, Models, DefaultPrompt, and multiple clicker variants (UniversalClicker, PerfectClicker, PixelPerfectClicker, VDAScreenClicker, OpencvVDAClicker, DebugClicker, LocalVisionClicker)
 - Depends on: Auth layer (ProviderConfig), Config layer (Settings), Utils, external dependencies (httpx, opencv, pyautogui, pytesseract, uiautomation)
 - Used by: UI layer (called from FloatingAssistant)
 - Purpose: Manage AI provider credentials and configuration
-- Location: `qwen_desktop/auth/provider_config.py`
+- Location: `vda/auth/provider_config.py`
 - Contains: ProviderConfig class (reads/writes provider, API key, model, base URL)
 - Depends on: Config layer (Settings, defaults.py for PROVIDERS registry)
 - Used by: Core layer (APIClient, ZenClient), UI layer (SettingsDialog)
 - Purpose: Application settings persistence and defaults
-- Location: `qwen_desktop/config/`
+- Location: `vda/config/`
 - Contains: `settings.py` (Settings class, JSON file persistence), `defaults.py` (PROVIDERS dict with all AI provider configs, DEFAULT_SETTINGS)
 - Depends on: Utils (platform.py for OS-specific config paths)
 - Used by: All layers
 - Purpose: File attachment management (validation, preview, encoding)
-- Location: `qwen_desktop/attachments/file_manager.py`
+- Location: `vda/attachments/file_manager.py`
 - Contains: Attachment dataclass, file type detection, size formatting
 - Depends on: Nothing internal (pathlib, dataclasses)
 - Used by: UI layer (FloatingAssistant for file picker)
 - Purpose: Shared cross-cutting helpers
-- Location: `qwen_desktop/utils/`
+- Location: `vda/utils/`
 - Contains: `logger.py` (centralized logging setup), `error_handler.py` (error classification, user messages, suggested actions), `file_encoder.py` (base64 file encoding for API), `platform.py` (OS detection)
 - Depends on: External libraries only
 - Used by: All layers
@@ -258,8 +258,8 @@ VDA is a desktop AI agent that controls computers like a human — seeing the sc
 
 ### Primary Request Path (Chat)
 
-- Session history stored as JSONL files in `~/.qwen-desktop/sessions/{project_hash}/chats/`
-- Application settings stored as JSON in platform-specific config dir (e.g., `AppData/Local/QwenDesktop/config.json`)
+- Session history stored as JSONL files in `~/.vda-desktop/sessions/{project_hash}/chats/`
+- Application settings stored as JSON in platform-specific config dir (e.g., `AppData/Local/VDADesktop/config.json`)
 - No in-memory cache between restarts (stateless on shutdown)
 - Short/Long-term memory (in `memory_manager.py`) persists across in-session tasks
 
@@ -270,7 +270,7 @@ VDA is a desktop AI agent that controls computers like a human — seeing the sc
 ## Key Abstractions
 
 - Purpose: Top-level application singleton, owns QApplication and FloatingAssistant
-- Location: `qwen_desktop/app.py`
+- Location: `vda/app.py`
 - Pattern: Singleton (single instance), composition root
 - Purpose: Encapsulate domain-specific business logic with settings-driven construction
 - Examples: `APIClient` (`core/api_client.py`), `ZenClient` (`core/zen_client.py`), `SessionService` (`core/session_service.py`), `VisionCaptureService` (`core/vision_capture.py`), `UIEDService` (`core/uied_service.py`)
@@ -279,29 +279,29 @@ VDA is a desktop AI agent that controls computers like a human — seeing the sc
 - Examples: `APIServerWorker` (`ui/floating_assistant.py`), `TestWorker` (`ui/settings_dialog.py`), `UIEDDetectionWorker` (`core/uied_service.py`)
 - Pattern: QThread subclass with PyQt signals (`pyqtSignal`) for data emission back to main thread
 - Purpose: Reusable floating toolbar buttons with translucent hover, Fluent Icons font
-- Location: `qwen_desktop/ui/components/base_button.py`
+- Location: `vda/ui/components/base_button.py`
 - Subclasses: `VisionButton`, `AttachButton`, `SendButton`, `SettingsButton`, `UIEDButton`
 - Pattern: PyQt QPushButton subclass, custom `paintEvent` for hover effects, Segoe Fluent Icons font
 - Purpose: Abstracts multiple AI providers into a unified configuration interface
-- Location: `qwen_desktop/auth/provider_config.py`
+- Location: `vda/auth/provider_config.py`
 - Pattern: Facade over `defaults.py` PROVIDERS dict and `Settings` object
 - Purpose: JSON-file-backed key-value settings with default values
-- Location: `qwen_desktop/config/settings.py`
+- Location: `vda/config/settings.py`
 - Pattern: Dictionary wrapper, lazy file loading, save on write
 - Purpose: Strip/extract model thinking/reasoning tags from AI responses
-- Location: `qwen_desktop/core/thinking_filter.py`
+- Location: `vda/core/thinking_filter.py`
 - Pattern: Regex-based text processing with multiple tag format support
 
 ## Entry Points
 
-- Location: `qwen_desktop/__main__.py`
-- Triggers: `py -m qwen_desktop`
+- Location: `vda/__main__.py`
+- Triggers: `py -m vda`
 - Responsibilities: Create DesktopApp, call app.run(), exit with return code
 - Location: `run.py`
 - Triggers: `py run.py`
 - Responsibilities: Add project root to sys.path, create DesktopApp, call app.run()
-- Location: Defined in `pyproject.toml` as `qwen-desktop = "qwen_desktop.__main__:main"`
-- Triggers: `qwen-desktop` (after pip install)
+- Location: Defined in `pyproject.toml` as `vda-desktop = "vda.__main__:main"`
+- Triggers: `vda-desktop` (after pip install)
 
 ## Error Handling
 
@@ -315,10 +315,10 @@ VDA is a desktop AI agent that controls computers like a human — seeing the sc
 
 ## Cross-Cutting Concerns
 
-- Centralized `setup_logger()` in `qwen_desktop/utils/logger.py`
-- Logs to console + file (`~/.qwen-desktop/app.log`)
+- Centralized `setup_logger()` in `vda/utils/logger.py`
+- Logs to console + file (`~/.vda-desktop/app.log`)
 - Format: `%(asctime)s - %(name)s - %(levelname)s - %(message)s`
-- Logger name: `qwen_desktop` root, per-module loggers via `logging.getLogger(__name__)`
+- Logger name: `vda` root, per-module loggers via `logging.getLogger(__name__)`
 - File attachment size limits (10MB max in `file_encoder.py`, `MAX_FILE_SIZE`)
 - Provider connection validation via `test_connection()` methods on both API clients
 - Optional dependency availability checked via try/except import guards

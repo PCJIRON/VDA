@@ -1,0 +1,94 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\Hp\AppData\Local\Programs\Python\Python313\python.exe
+cachedir: .pytest_cache
+PyQt6 6.10.2 -- Qt runtime 6.10.2 -- Qt compiled 6.10.0
+rootdir: C:\Users\Hp\OneDrive\Desktop\files\vda_code_desktop\vda\vda-desktop
+configfile: pyproject.toml
+plugins: anyio-4.13.0, cov-7.1.0, qt-4.5.0
+collecting ... collected 63 items
+
+tests/test_attachments.py::TestAttachment::test_create_attachment PASSED [  1%]
+tests/test_attachments.py::TestAttachment::test_attachment_size_formatted PASSED [  3%]
+tests/test_attachments.py::TestAttachment::test_is_code_file PASSED      [  4%]
+tests/test_attachments.py::TestAttachment::test_is_image PASSED          [  6%]
+tests/test_attachments.py::TestFileManager::test_validate_file_not_exists PASSED [  7%]
+tests/test_attachments.py::TestFileManager::test_validate_file_with_temp PASSED [  9%]
+tests/test_attachments.py::TestFileManager::test_validate_file_size_limit PASSED [ 11%]
+tests/test_attachments.py::TestFileManager::test_read_file_content PASSED [ 12%]
+tests/test_attachments.py::TestFileManager::test_get_preview_code_file PASSED [ 14%]
+tests/test_auth.py::TestCredentials::test_save_and_get_access_token FAILED [ 15%]
+tests/test_auth.py::TestCredentials::test_save_and_get_refresh_token FAILED [ 17%]
+tests/test_auth.py::TestCredentials::test_clear_credentials FAILED       [ 19%]
+tests/test_auth.py::TestTokenManager::test_is_token_valid_no_token PASSED [ 20%]
+tests/test_auth.py::TestTokenManager::test_save_and_get_tokens PASSED    [ 22%]
+tests/test_auth.py::TestOAuthHandler::test_init_default_values PASSED    [ 23%]
+tests/test_auth.py::TestOAuthHandler::test_is_authenticated_no_token PASSED [ 25%]
+tests/test_auth.py::TestOAuthHandler::test_logout_clears_tokens PASSED   [ 26%]
+tests/test_conversation.py::TestMessage::test_create_message PASSED      [ 28%]
+tests/test_conversation.py::TestMessage::test_message_to_dict PASSED     [ 30%]
+tests/test_conversation.py::TestMessage::test_message_from_dict PASSED   [ 31%]
+tests/test_conversation.py::TestConversation::test_create_conversation PASSED [ 33%]
+tests/test_conversation.py::TestConversation::test_add_message PASSED    [ 34%]
+tests/test_conversation.py::TestConversation::test_add_message_truncates_title PASSED [ 36%]
+tests/test_conversation.py::TestConversation::test_get_messages_for_api PASSED [ 38%]
+tests/test_conversation.py::TestConversation::test_clear_conversation PASSED [ 39%]
+tests/test_conversation.py::TestConversation::test_conversation_to_dict PASSED [ 41%]
+tests/test_conversation.py::TestConversation::test_conversation_from_dict PASSED [ 42%]
+tests/test_conversation.py::TestModelInfo::test_get_default_models PASSED [ 44%]
+tests/test_conversation.py::TestModelInfo::test_model_supports_vision PASSED [ 46%]
+tests/test_conversation.py::TestUserInfo::test_from_oauth_response PASSED [ 47%]
+tests/test_conversation.py::TestTokenUsage::test_from_api_response PASSED [ 49%]
+tests/test_error_handler.py::TestClassifyError::test_auth_error_401 PASSED [ 50%]
+tests/test_error_handler.py::TestClassifyError::test_auth_error_403 PASSED [ 52%]
+tests/test_error_handler.py::TestClassifyError::test_rate_limit_error_429 PASSED [ 53%]
+tests/test_error_handler.py::TestClassifyError::test_server_error_500 PASSED [ 55%]
+tests/test_error_handler.py::TestClassifyError::test_server_error_503 PASSED [ 57%]
+tests/test_error_handler.py::TestClassifyError::test_network_error PASSED [ 58%]
+tests/test_error_handler.py::TestClassifyError::test_timeout_error PASSED [ 60%]
+tests/test_error_handler.py::TestClassifyError::test_unknown_error PASSED [ 61%]
+tests/test_error_handler.py::TestClassifyError::test_no_info_returns_unknown PASSED [ 63%]
+tests/test_error_handler.py::TestGetUserMessage::test_auth_error_message PASSED [ 65%]
+tests/test_error_handler.py::TestGetUserMessage::test_rate_limit_message PASSED [ 66%]
+tests/test_error_handler.py::TestGetUserMessage::test_network_error_message PASSED [ 68%]
+tests/test_error_handler.py::TestGetUserMessage::test_server_error_message PASSED [ 69%]
+tests/test_error_handler.py::TestGetUserMessage::test_file_error_message_with_details PASSED [ 71%]
+tests/test_error_handler.py::TestGetUserMessage::test_unknown_error_message PASSED [ 73%]
+tests/test_error_handler.py::TestGetSuggestedAction::test_auth_action PASSED [ 74%]
+tests/test_error_handler.py::TestGetSuggestedAction::test_rate_limit_action PASSED [ 76%]
+tests/test_error_handler.py::TestGetSuggestedAction::test_network_action PASSED [ 77%]
+tests/test_error_handler.py::TestGetSuggestedAction::test_server_action PASSED [ 79%]
+tests/test_file_encoder.py::TestEncodeFile::test_encode_text_file PASSED [ 80%]
+tests/test_file_encoder.py::TestEncodeFile::test_encode_python_file PASSED [ 82%]
+tests/test_file_encoder.py::TestEncodeFile::test_encode_nonexistent_file PASSED [ 84%]
+tests/test_file_encoder.py::TestEncodeFile::test_encode_directory PASSED [ 85%]
+tests/test_file_encoder.py::TestEncodeFile::test_encode_binary_file PASSED [ 87%]
+tests/test_file_encoder.py::TestIsImageFile::test_png_is_image PASSED    [ 88%]
+tests/test_file_encoder.py::TestIsImageFile::test_jpg_is_image PASSED    [ 90%]
+tests/test_file_encoder.py::TestIsImageFile::test_txt_not_image PASSED   [ 92%]
+tests/test_file_encoder.py::TestIsImageFile::test_py_not_image PASSED    [ 93%]
+tests/test_file_encoder.py::TestGetFileCategory::test_code_file_category PASSED [ 95%]
+tests/test_file_encoder.py::TestGetFileCategory::test_config_file_category PASSED [ 96%]
+tests/test_file_encoder.py::TestGetFileCategory::test_document_file_category PASSED [ 98%]
+tests/test_file_encoder.py::TestGetFileCategory::test_image_file_category PASSED [100%]
+
+================================== FAILURES ===================================
+_______________ TestCredentials.test_save_and_get_access_token ________________
+tests\test_auth.py:17: in test_save_and_get_access_token
+    creds.save_access_token("test_token_123")
+    ^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'Credentials' object has no attribute 'save_access_token'. Did you mean: 'get_access_token'?
+_______________ TestCredentials.test_save_and_get_refresh_token _______________
+tests\test_auth.py:27: in test_save_and_get_refresh_token
+    creds.save_refresh_token("refresh_token_456")
+    ^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'Credentials' object has no attribute 'save_refresh_token'. Did you mean: 'get_refresh_token'?
+___________________ TestCredentials.test_clear_credentials ____________________
+tests\test_auth.py:37: in test_clear_credentials
+    creds.save_access_token("access_token")
+    ^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'Credentials' object has no attribute 'save_access_token'. Did you mean: 'get_access_token'?
+=========================== short test summary info ===========================
+FAILED tests/test_auth.py::TestCredentials::test_save_and_get_access_token - ...
+FAILED tests/test_auth.py::TestCredentials::test_save_and_get_refresh_token
+FAILED tests/test_auth.py::TestCredentials::test_clear_credentials - Attribut...
+======================== 3 failed, 60 passed in 2.17s =========================

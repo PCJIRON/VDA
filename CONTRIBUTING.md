@@ -11,7 +11,7 @@ If you find a bug, please create an issue on GitHub. Make sure to include:
 - Your Operating System and Python version.
 - The AI provider/model you were using.
 - A clear, detailed description of the problem.
-- Any error logs from `~/.qwen-desktop/app.log`.
+- Any error logs from `~/.vda-desktop/app.log`.
 
 ### Suggesting Enhancements
 Have an idea to make VDA better? We'd love to hear it! Open an issue outlining your proposal. If you have an idea for how to implement it, feel free to describe the technical approach.
