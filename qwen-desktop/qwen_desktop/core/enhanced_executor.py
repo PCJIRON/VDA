@@ -3,7 +3,7 @@ import logging
 import os
 import re
 import time
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -67,7 +67,7 @@ class ClickValidator:
 
     @staticmethod
     def click_and_verify(x: int, y: int, action: str = "click",
-                         retries: int = 2) -> bool:
+                         retries: int = 0) -> bool:
         for attempt in range(retries + 1):
             with restore_failsafe():
                 try:
@@ -88,6 +88,8 @@ class ClickValidator:
                         time.sleep(0.1)
                 except Exception as e:
                     logger.warning(f"Click attempt {attempt + 1} failed: {e}")
+        # Return False if no pixel change detected — the LLM needs accurate feedback
+        logger.warning(f"[ClickValidator] No pixel change detected at ({x}, {y}) after {retries+1} attempts")
         return False
 
 
@@ -159,69 +161,122 @@ class EnhancedExecutor:
             "confidence": float(data.get("confidence", 0.5)),
         }
 
-    def execute(self, parsed: dict) -> bool:
-        action = parsed["action"]
-        x, y = parsed["x"], parsed["y"]
+    def execute(self, parsed: dict) -> Union[bool, str, dict]:
+        """Execute a vision action (click, type, scroll, etc.).
+
+        Flow for click/double_click/right_click/move:
+          1. If target_name given AND matching template exists:
+             a) Template match succeeds → use template coords (most accurate)
+             b) Template match fails, SIFT succeeds → return sift_verify dict for LLM check
+          2. If no template matched → use LLM coordinates directly (still works well)
+          3. Execute the click/type/scroll action
+
+        Returns:
+            True on success, a dict for sift_verify, or False on failure.
+        """
+        action = parsed.get("action", "")
+        x = parsed.get("x", 0)
+        y = parsed.get("y", 0)
         target_name = parsed.get("target_name")
 
         template_matched = False
 
-        # Prioritize matching from user's saved UIED templates if target_name is provided
-        if target_name and action in (self.CLICK, self.DOUBLE_CLICK, self.RIGHT_CLICK, self.MOVE):
+        # Try template matching if target_name is provided and a saved template exists
+        if target_name and action in (self.CLICK, self.DOUBLE_CLICK, self.RIGHT_CLICK, self.MOVE, "type"):
             template_dir = os.path.join(os.path.expanduser("~"), ".qwen_desktop", "uied_templates")
             if os.path.exists(template_dir):
                 import glob
-                # Find templates that match the target name
                 normalized_target = target_name.lower().replace(" ", "_").replace(".png", "")
-                
-                # 1. Try exact matches first
+
                 matched_paths = []
                 for ext in ["*.png", "*.jpg", "*.jpeg"]:
                     for tpath in glob.glob(os.path.join(template_dir, ext)):
                         basename = os.path.basename(tpath).lower().replace(ext[1:], "")
                         if normalized_target in basename or basename in normalized_target:
                             matched_paths.append(tpath)
-                
-                # 2. Match with template
+
                 for tpath in matched_paths:
-                    res = self.find_with_template(tpath, threshold=0.75)
+                    res = self.find_with_template(tpath, threshold=0.65, llm_x=x, llm_y=y)
                     if res:
-                        x, y = res
+                        x, y, is_sift = res
+                        if is_sift and not parsed.get("sift_verified"):
+                            logger.info(f"[EnhancedExecutor] SIFT fallback triggered for '{target_name}'. Requesting LLM verification.")
+                            pyautogui.moveTo(x, y, duration=0.2)
+                            return {"action": "sift_verify", "x": x, "y": y, "target_name": target_name, "original_parsed": parsed}
                         logger.info(f"[EnhancedExecutor] Found '{target_name}' via template matching at ({x}, {y})")
                         template_matched = True
                         break
 
-        if action in (self.CLICK, self.DOUBLE_CLICK, self.RIGHT_CLICK, self.MOVE):
             if not template_matched:
-                logger.error(f"[EnhancedExecutor] STRICT MODE: Action '{action}' on '{target_name}' failed because template matching was not successful.")
-                return False
+                if action in (self.CLICK, self.DOUBLE_CLICK, self.RIGHT_CLICK, self.MOVE):
+                    return f"Error: No template match found for '{target_name}'. LLM coordinates are strictly disabled."
+                if action == "type":
+                    # Don't click LLM coordinates — just type at current cursor position
+                    logger.info(f"[EnhancedExecutor] No template for '{target_name}', typing at current cursor position.")
+                    x, y = 0, 0  # Reset coords so type action doesn't click anywhere
+        elif not target_name and action in (self.CLICK, self.DOUBLE_CLICK, self.RIGHT_CLICK, self.MOVE):
+            return f"Error: Cannot execute {action} without a target_name. LLM coordinates are strictly disabled."
+
+        # --- Execute the action ---
 
         if action == "type":
             text = parsed.get("text", "")
             if text:
+                if x != 0 and y != 0:
+                    logger.info(f"[EnhancedExecutor] Auto-clicking ({x}, {y}) before typing.")
+                    pyautogui.click(x, y)
+                    time.sleep(0.3)
                 pyautogui.write(text, interval=0.05)
             return True
 
         if action == "wait":
-            import time
             time.sleep(2)
             return True
 
         if action in (self.CLICK, self.DOUBLE_CLICK, self.RIGHT_CLICK):
-            return ClickValidator.click_and_verify(x, y, action)
+            res = ClickValidator.click_and_verify(x, y, action)
+            if action == self.DOUBLE_CLICK:
+                logger.info("[EnhancedExecutor] Waiting 1.5s after double_click for app to open")
+                time.sleep(1.5)
+            return res
 
         if action == "move":
             pyautogui.moveTo(x, y, duration=0.3)
             return True
 
         if action == "scroll":
-            pyautogui.scroll(-3)
+            direction = parsed.get("direction", "down")
+            amount = int(parsed.get("amount", 3))
+            scroll_val = -amount if direction == "down" else amount
+            pyautogui.scroll(scroll_val)
             return True
 
-        pyautogui.click(x, y)
+        if action == "key":
+            key_combo = parsed.get("key", "")
+            if key_combo:
+                # Support combos like "ctrl+t", "ctrl+l", "alt+f4"
+                if "+" in key_combo:
+                    keys = [k.strip().lower() for k in key_combo.split("+")]
+                    pyautogui.hotkey(*keys)
+                else:
+                    pyautogui.press(key_combo)
+                    if key_combo.lower() == "enter":
+                        logger.info("[EnhancedExecutor] Waiting 1.5s after Enter for page to load")
+                        time.sleep(1.5)
+            return True
+
+        if action == "hotkey":
+            keys = parsed.get("keys", [])
+            if keys:
+                pyautogui.hotkey(*keys)
+            return True
+
+        # Fallback: just click
+        if x != 0 or y != 0:
+            pyautogui.click(x, y)
         return True
 
-    def find_with_template(self, template_path: str, threshold: float = 0.7) -> Optional[Tuple[int, int]]:
+    def find_with_template(self, template_path: str, threshold: float = 0.7, llm_x: int = 0, llm_y: int = 0) -> Optional[Tuple[int, int, bool]]:
         if not os.path.exists(template_path):
             return None
         try:
@@ -231,13 +286,54 @@ class EnhancedExecutor:
             screenshot = pyautogui.screenshot()
             screen_np = np.array(screenshot)
             screen_gray = cv2.cvtColor(screen_np, cv2.COLOR_RGB2GRAY)
+            
+            # Step 1: Standard template matching
             result = cv2.matchTemplate(screen_gray, template, cv2.TM_CCOEFF_NORMED)
             _, max_val, _, max_loc = cv2.minMaxLoc(result)
             if max_val >= threshold:
                 h, w = template.shape
                 cx = max_loc[0] + w // 2
                 cy = max_loc[1] + h // 2
-                return (cx, cy)
-        except Exception:
-            pass
+                return (cx, cy, False)
+                
+            # Step 2: SIFT Fallback
+            logger.info(f"[EnhancedExecutor] Standard matching failed (val={max_val:.2f}), attempting SIFT fallback.")
+            sift = cv2.SIFT_create()
+            kp1, des1 = sift.detectAndCompute(template, None)
+            kp2, des2 = sift.detectAndCompute(screen_gray, None)
+            
+            if des1 is None or len(des1) < 4:
+                return None
+                
+            bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
+            matches = bf.knnMatch(des1, des2, k=2)
+            
+            good_matches = []
+            for m, n in matches:
+                if m.distance < 0.75 * n.distance:
+                    good_matches.append(m)
+                    
+            if len(good_matches) >= 4:
+                src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+                dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+                
+                M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+                if M is not None:
+                    h, w = template.shape
+                    pts = np.float32([[0, 0], [0, h-1], [w-1, h-1], [w-1, 0]]).reshape(-1, 1, 2)
+                    dst = cv2.perspectiveTransform(pts, M)
+                    
+                    cx = int(np.mean(dst[:, 0, 0]))
+                    cy = int(np.mean(dst[:, 0, 1]))
+                    
+                    if 0 <= cx <= screen_gray.shape[1] and 0 <= cy <= screen_gray.shape[0]:
+                        if llm_x != 0 and llm_y != 0:
+                            dist = ((cx - llm_x) ** 2 + (cy - llm_y) ** 2) ** 0.5
+                            if dist > 200:
+                                logger.warning(f"[EnhancedExecutor] SIFT rejected: ({cx}, {cy}) is {dist:.1f}px from LLM ({llm_x}, {llm_y}).")
+                                return None
+                        logger.info(f"[EnhancedExecutor] SIFT fallback succeeded at ({cx}, {cy}).")
+                        return (cx, cy, True)
+        except Exception as e:
+            logger.error(f"[EnhancedExecutor] Template matching error: {e}")
         return None

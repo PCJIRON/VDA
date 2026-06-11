@@ -6,6 +6,7 @@ import io
 import logging
 import re
 import uuid
+import os
 
 from PyQt6.QtCore import Qt, QPoint, QEasingCurve, QTimer, QEvent, QVariantAnimation, QPropertyAnimation, QRect, QRectF
 from PyQt6.QtGui import QColor, QPainter, QLinearGradient, QBrush, QCursor, QPixmap, QAction, QPen
@@ -687,10 +688,20 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         saved_components = self._load_saved_templates_as_components()
         components = saved_components + self._uied_components if self._uied_components else saved_components
 
+        skills_content = ""
+        skills_path = self.settings.get("skills_md_path")
+        if skills_path and os.path.exists(skills_path):
+            try:
+                with open(skills_path, "r", encoding="utf-8") as f:
+                    skills_content = f.read()
+            except Exception as e:
+                logger.warning(f"Failed to read skills file: {e}")
+
         prompt = build_system_prompt(
             screen_width=sw, screen_height=sh,
             components=components,
             vision_mode=self.is_vision_enabled,
+            skills_content=skills_content,
         )
         has_system = any(m.get("role") == "system" for m in history)
         if not has_system:
@@ -1055,8 +1066,14 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         worker.start()
         return worker
 
-    def _on_agent_finished(self, results, api_client, user_text, history, vision_mode):
+    def _on_agent_finished(self, final_output, api_client, user_text, history, vision_mode):
         """Handle agent completion — fall back to direct LLM call if no usable text."""
+        if isinstance(final_output, dict) and final_output.get("summary"):
+            self._on_api_finished(final_output.get("summary"))
+            return
+
+        # Legacy fallback if it's a list or dict with just raw results
+        results = final_output.get("results") if isinstance(final_output, dict) else final_output
         formatted = self._format_results(results)
         if formatted:
             self._on_api_finished(formatted)

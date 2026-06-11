@@ -183,6 +183,7 @@ DEFAULT_SETTINGS: dict[str, any] = {
     "compaction_max_tokens": 128000,
     "doom_loop_threshold": 3,
     "permission_cache_ttl": 0,
+    "skills_md_path": "",
 }
 
 AGENT_TYPES: dict[str, dict] = {

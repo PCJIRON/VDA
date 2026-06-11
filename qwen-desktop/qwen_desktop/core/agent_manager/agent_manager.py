@@ -24,6 +24,7 @@ import json
 import logging
 import re
 import time
+import os
 from typing import Any, Callable, Optional
 
 from qwen_desktop.config.defaults import PROVIDERS
@@ -58,6 +59,7 @@ class AgentState(enum.Enum):
     COMPLETE = "complete"
     ERROR = "error"
     PAUSED = "paused"
+    SIFT_VERIFY = "sift_verify"
 
 
 # Type for the injected screenshot callable. Returns a base64-encoded
@@ -124,6 +126,7 @@ class AgentManager:
         # Internal state
         self._error: Optional[str] = None
         self._paused_reason: Optional[str] = None
+        self._sift_verify_data: Optional[dict[str, Any]] = None
         self._user_input: str = ""
         self._context: str = ""
 
@@ -135,6 +138,7 @@ class AgentManager:
             AgentState.VERIFY: self._handle_verify,
             AgentState.COMPLETE: self._handle_complete,
             AgentState.ERROR: self._handle_error,
+            AgentState.SIFT_VERIFY: self._handle_sift_verify,
         }
 
     def reset(self) -> None:
@@ -151,6 +155,7 @@ class AgentManager:
         self.last_summary = ""
         self._error = None
         self._paused_reason = None
+        self._sift_verify_data = None
         self._user_input = ""
         self._context = ""
         self.doom_detector.clear()
@@ -176,6 +181,139 @@ class AgentManager:
             return self.state, None
 
         return await handler()
+
+    async def _handle_sift_verify(self) -> tuple[AgentState, Optional[dict[str, Any]]]:
+        """Handle SIFT_VERIFY: LLM checks if the SIFT fallback location is correct.
+
+        Flow:
+          - LLM says yes → execute click at SIFT coords, go to VERIFY
+          - LLM says no → fall back to original LLM coords, execute click there, go to VERIFY
+          - Exception → fall back to LLM coords, go to VERIFY
+        """
+        logger.info("[AgentManager] LLM Verification for SIFT fallback started.")
+        if not self._sift_verify_data:
+            # No data — just replan
+            self.state = AgentState.PLAN
+            return self.state, {"event": "verify_replan"}
+
+        data = self._sift_verify_data
+        target_name = data.get("target_name", "unknown target")
+        sift_x, sift_y = data.get("x", 0), data.get("y", 0)
+        original_parsed = data.get("original_parsed", {})
+        llm_x = original_parsed.get("x", 0)
+        llm_y = original_parsed.get("y", 0)
+
+        b64_image = None
+        if self.screenshot_fn:
+            b64_image = self.screenshot_fn()
+
+            # Draw a red circle on the image at (sift_x, sift_y)
+            try:
+                import cv2
+                import base64
+                import numpy as np
+                img_data = base64.b64decode(b64_image)
+                nparr = np.frombuffer(img_data, np.uint8)
+                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                cv2.circle(img, (sift_x, sift_y), 20, (0, 0, 255), 3)
+                _, buffer = cv2.imencode('.jpg', img)
+                b64_image = base64.b64encode(buffer).decode('utf-8')
+            except Exception as e:
+                logger.error(f"[AgentManager] Failed to draw circle for SIFT verify: {e}")
+
+        messages = [
+            {"role": "user", "content": [
+                {"type": "text", "text": f"SIFT fallback matched the target '{target_name}'. I drew a red circle at the matched location. Please verify if the red circle is exactly on the correct target. If YES, reply 'verified: true'. If NO, reply 'no template matching here'."}
+            ]}
+        ]
+
+        if b64_image:
+            messages[0]["content"].append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_image}"}})
+
+        try:
+            content = ""
+            async for chunk in self.api_client.chat(messages):
+                content += chunk
+            logger.info(f"[AgentManager] SIFT verification LLM response: {content}")
+
+            if "no template matching here" in content.lower() or "not on the correct target" in content.lower():
+                # SIFT was wrong — fall back to LLM coordinates
+                logger.info(f"[AgentManager] SIFT rejected. Falling back to LLM coords ({llm_x}, {llm_y}).")
+                if self.vision_executor and llm_x != 0 and llm_y != 0:
+                    fallback_parsed = dict(original_parsed)
+                    fallback_parsed.pop("target_name", None)  # Don't re-trigger template matching
+                    self.vision_executor.execute(fallback_parsed)
+                    self.record_step_outcome(
+                        self.plan[self.current_step],
+                        f"SIFT rejected, clicked at LLM coords ({llm_x}, {llm_y})",
+                        True,
+                    )
+                else:
+                    self.record_step_outcome(
+                        self.plan[self.current_step],
+                        "SIFT rejected, no valid LLM fallback coords",
+                        False,
+                    )
+                self.state = AgentState.PLAN
+                self._sift_verify_data = None
+                return self.state, {"event": "verify_replan"}
+
+            elif re.search(r'\bverified:\s*true\b', content.lower()) or "correct target" in content.lower():
+                # SIFT was correct — execute click at SIFT coords
+                logger.info(f"[AgentManager] SIFT verified! Clicking at ({sift_x}, {sift_y}).")
+                if self.vision_executor:
+                    verified_parsed = dict(original_parsed)
+                    verified_parsed["x"] = sift_x
+                    verified_parsed["y"] = sift_y
+                    verified_parsed["sift_verified"] = True
+                    verified_parsed.pop("target_name", None)
+                    self.vision_executor.execute(verified_parsed)
+                self.record_step_outcome(
+                    self.plan[self.current_step],
+                    f"SIFT verified, clicked at ({sift_x}, {sift_y})",
+                    True,
+                )
+                self.state = AgentState.PLAN
+                self._sift_verify_data = None
+                return self.state, {"event": "verify_replan"}
+
+            else:
+                # Ambiguous response — fall back to LLM coords
+                logger.info(f"[AgentManager] SIFT ambiguous response. Falling back to LLM coords ({llm_x}, {llm_y}).")
+                if self.vision_executor and llm_x != 0 and llm_y != 0:
+                    fallback_parsed = dict(original_parsed)
+                    fallback_parsed.pop("target_name", None)
+                    self.vision_executor.execute(fallback_parsed)
+                    self.record_step_outcome(
+                        self.plan[self.current_step],
+                        f"SIFT ambiguous, clicked at LLM coords ({llm_x}, {llm_y})",
+                        True,
+                    )
+                else:
+                    self.record_step_outcome(
+                        self.plan[self.current_step],
+                        "SIFT ambiguous, no valid LLM fallback coords",
+                        False,
+                    )
+                self.state = AgentState.PLAN
+                self._sift_verify_data = None
+                return self.state, {"event": "verify_replan"}
+
+        except Exception as e:
+            logger.error(f"[AgentManager] SIFT verify LLM call failed: {e}")
+            # On exception, just use LLM coords and continue
+            if self.vision_executor and llm_x != 0 and llm_y != 0:
+                fallback_parsed = dict(original_parsed)
+                fallback_parsed.pop("target_name", None)
+                self.vision_executor.execute(fallback_parsed)
+            self.record_step_outcome(
+                self.plan[self.current_step],
+                f"SIFT verify failed ({e}), used LLM coords",
+                True,
+            )
+            self.state = AgentState.PLAN
+            self._sift_verify_data = None
+            return self.state, {"event": "verify_replan"}
 
     async def _handle_init(self) -> tuple[AgentState, Optional[dict[str, Any]]]:
         """Handle INIT state: set up iteration count, transition to PLAN."""
@@ -225,11 +363,22 @@ class AgentManager:
         except Exception:
             sw, sh = 1920, 1080
 
+        skills_content = ""
+        if hasattr(self, "settings") and self.settings:
+            skills_path = self.settings.get("skills_md_path")
+            if skills_path and os.path.exists(skills_path):
+                try:
+                    with open(skills_path, "r", encoding="utf-8") as f:
+                        skills_content = f.read()
+                except Exception as e:
+                    logger.warning(f"Failed to read skills file: {e}")
+
         system_prompt = build_system_prompt(
             screen_width=sw,
             screen_height=sh,
             components=self.components,
             vision_mode=True,
+            skills_content=skills_content,
         )
 
         user_text = self._build_user_prompt(history_block)
@@ -369,7 +518,8 @@ class AgentManager:
         self,
     ) -> tuple[AgentState, Optional[dict[str, Any]]]:
         """Handle ERROR state: return error message."""
-        return self.state, {"event": "error", "message": self._error}
+        error_msg = getattr(self, "_error", "Unknown error")
+        return self.state, {"event": "error", "message": error_msg, "error": error_msg}
 
     # ------------------------------------------------------------------
     # Helpers
@@ -394,11 +544,13 @@ class AgentManager:
             "step": step.get("step", "?"),
             "action": step.get("args", {}).get("action", "?"),
             "target_name": step.get("args", {}).get("target_name"),
+            "x": step.get("args", {}).get("x"),
+            "y": step.get("args", {}).get("y"),
             "result": result,
             "success": success,
         })
         # Keep only the most recent N steps in history to bound token usage
-        max_history = 8
+        max_history = 15
         if len(self.completed_steps) > max_history:
             self.completed_steps = self.completed_steps[-max_history:]
         # Advance step pointer so the state machine progresses
@@ -421,22 +573,49 @@ class AgentManager:
             mark = "✓" if s.get("success") else "✗"
             action = s.get("action", "?")
             target = s.get("target_name") or ""
+            x = s.get("x")
+            y = s.get("y")
+            
+            coord_str = f" at ({x},{y})" if x is not None and y is not None else ""
             result = (s.get("result") or "")[:80]
             line = f"{i}. {mark} {action}"
             if target:
                 line += f" {target}"
-            line += f" — {result}"
+            line += f"{coord_str} — {result}"
             lines.append(line)
         return "\n".join(lines)
 
     def _build_user_prompt(self, history_block: str) -> str:
         """Compose the per-turn user prompt (text only, image is separate)."""
+        # Count consecutive recent failures to warn the LLM
+        recent_fails = 0
+        for s in reversed(self.completed_steps[-5:]):
+            if not s.get("success"):
+                recent_fails += 1
+            else:
+                break
+
+        fail_hint = ""
+        if recent_fails >= 2:
+            fail_hint = (
+                f"\n\nURGENT WARNING: Your last {recent_fails} steps FAILED. "
+                "You MUST change your strategy completely. Do NOT repeat the same action. "
+                "Use keyboard shortcuts (ctrl+l, ctrl+t, Tab, Enter) instead of mouse clicks. "
+                "If you are stuck, try a completely different approach.\n"
+            )
+
         return (
             f"USER TASK: {self._user_input}\n\n"
             f"STEPS COMPLETED SO FAR:\n{history_block}\n\n"
-
-            "Look at the current screenshot. Decide the NEXT single action, "
-            "or reply with done: true if the task is complete."
+            "RULES:\n"
+            "- The SCREENSHOT is absolute ground truth. If it hasn't changed, your last action FAILED.\n"
+            "- After typing a URL or search query, you MUST press Enter on the NEXT step. NEVER forget Enter.\n"
+            "- Use ctrl+l to focus the URL bar (NEVER click the URL bar with mouse).\n"
+            "- If Chrome autofill dropdown appears, press Enter to submit. Do NOT click dropdown items.\n"
+            "- If a click fails with 'strictly disabled', switch to keyboard shortcuts immediately.\n"
+            "- Do NOT repeat the same failed action. Try a different approach.\n"
+            f"{fail_hint}\n"
+            "Decide the NEXT single action, or reply done: true if complete."
         )
 
     def _get_screen_size(self) -> tuple[int, int]:
@@ -449,19 +628,7 @@ class AgentManager:
             return 1920, 1080
 
     def _parse_action_response(self, response_text: str) -> dict[str, Any]:
-        """Parse the LLM's JSON response into an action dict.
-
-        Handles four cases:
-          1. `{"done": true, "summary": ...}` — task complete
-          2. `{"action": ..., "target_name": ..., ...}` — next action
-          3. Conversational/no-JSON response (greeting, "I can't see",
-             "what do you need") — treat as done: true with summary so the
-             user sees the message and the agent doesn't loop forever
-          4. Parse failure with technical gibberish — safe fallback action
-
-        Returns:
-            A dict with at minimum one of: {"done": True} or {"action": ...}.
-        """
+        """Parse the LLM's JSON response into an action dict."""
         if not response_text or not response_text.strip():
             return {
                 "action": "wait",
@@ -470,8 +637,14 @@ class AgentManager:
                 "description": "(empty LLM response — try again)",
             }
 
+        # Strip all <think>...</think> tags FIRST so they don't corrupt JSON parsing
+        import re
+        clean_text = re.sub(r"<think>.*?</think>", "", response_text, flags=re.DOTALL).strip()
+        if not clean_text:
+            clean_text = response_text # Fallback if everything was stripped
+
         # 1. Try to find a markdown json block (non-greedy)
-        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", response_text, re.DOTALL | re.IGNORECASE)
+        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean_text, re.DOTALL | re.IGNORECASE)
         if json_match:
             try:
                 parsed = json.loads(json_match.group(1))
@@ -481,40 +654,20 @@ class AgentManager:
                 pass
 
         # 2. Try to find the first { and last } (handles chatty models without markdown)
-        start_idx = response_text.find('{')
-        end_idx = response_text.rfind('}')
+        start_idx = clean_text.find('{')
+        end_idx = clean_text.rfind('}')
         if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
             try:
-                parsed = json.loads(response_text[start_idx:end_idx+1])
+                parsed = json.loads(clean_text[start_idx:end_idx+1])
                 if isinstance(parsed, dict):
                     return parsed
             except json.JSONDecodeError:
                 pass
 
-        # Heuristic: if the LLM's response looks conversational (not JSON,
-        # not technical gibberish like 'null' or '[]'), surface it as a
-        # `done: true` summary instead of looping on a `wait` action. This
-        # handles free-form models that can't always emit structured JSON
-        # (e.g. minimax-m3-free for greetings).
-        stripped = response_text.strip()
-        # Strip <think>...</think> blocks
-        stripped_no_think = re.sub(r"<think>.*?</think>", "", stripped, flags=re.DOTALL).strip()
-        # Only treat as conversational prose if it has letters/words
-        # (not a single token like 'null' or '[]' which is parse failure)
-        looks_like_prose = (
-            stripped_no_think
-            and not stripped_no_think.startswith("{")
-            and len(stripped_no_think) > 5
-            and re.search(r"[A-Za-z]{3,}", stripped_no_think)
-        )
-        if looks_like_prose:
-            logger.info(
-                "[AgentManager] Treating non-JSON LLM response as done: true"
-            )
-            return {
-                "done": True,
-                "summary": stripped_no_think[:500],
-            }
+        # Non-JSON response: treat as a failed parse and wait.
+        # Previously this used a prose heuristic that would falsely mark
+        # tasks as done when the LLM responded with conversational text
+        # instead of JSON. This caused premature task completion.
 
         logger.warning(
             "[AgentManager] Could not parse JSON from LLM response: %s",

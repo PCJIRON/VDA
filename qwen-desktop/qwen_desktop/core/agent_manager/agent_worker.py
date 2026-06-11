@@ -126,8 +126,8 @@ class AgentWorker(QThread):
 
             # --- Terminal states ---
             if state == AgentState.COMPLETE:
-                results = output.get("results") if output else None
-                self.finished.emit(results)
+                final_output = output if output else {}
+                self.finished.emit(final_output)
                 self.status_changed.emit("complete")
                 logger.info(
                     "[AgentWorker] Agent loop completed in %d steps",
@@ -136,10 +136,10 @@ class AgentWorker(QThread):
                 break
 
             if state == AgentState.ERROR:
-                message = (
-                    output.get("message", "Unknown error")
-                    if output else "Unknown error"
-                )
+                if output:
+                    message = output.get("message") or output.get("error") or "Unknown error"
+                else:
+                    message = "Unknown error"
                 self.error_occurred.emit(message)
                 self.status_changed.emit("error")
                 logger.error("[AgentWorker] Agent loop error: %s", message)
@@ -246,8 +246,17 @@ class AgentWorker(QThread):
                     if "target" in parsed and isinstance(parsed["target"], (list, tuple)):
                         parsed["x"], parsed["y"] = parsed["target"][0], parsed["target"][1]
                     ok = vision_executor.execute(parsed)
-                    result_str = f"Vision action '{parsed.get('action', '?')}' -> {ok}"
-                    success = bool(ok)
+                    if isinstance(ok, dict) and ok.get("action") == "sift_verify":
+                        self._agent_manager.state = AgentState.SIFT_VERIFY
+                        self._agent_manager._sift_verify_data = ok
+                        return
+                    elif isinstance(ok, str):
+                        result_str = ok
+                        success = False
+                        logger.error(f"[AgentWorker] Vision executor returned error: {ok}")
+                    else:
+                        result_str = f"Vision action '{parsed.get('action', '?')}' -> {ok}"
+                        success = bool(ok)
             elif tool_name:
                 tool = self._agent_manager.tool_registry.get_tool(tool_name)
                 if tool:

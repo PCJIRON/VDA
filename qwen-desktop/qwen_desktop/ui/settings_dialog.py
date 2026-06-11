@@ -2,7 +2,7 @@ import asyncio
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QComboBox, QMessageBox, QGroupBox, QFormLayout, QWidget,
+    QComboBox, QMessageBox, QGroupBox, QFormLayout, QWidget, QFileDialog,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QDesktopServices
@@ -41,7 +41,7 @@ class SettingsDialog(QDialog):
         self._config = provider_config
         self._settings = settings
         self.setWindowTitle("Settings - AI Provider")
-        self.setFixedSize(540, 420)
+        self.setFixedSize(540, 540)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
 
         self.setStyleSheet("""
@@ -192,6 +192,27 @@ class SettingsDialog(QDialog):
         model_layout.addWidget(self.base_url_container)
 
         layout.addWidget(model_group)
+
+        # Skills file (optional)
+        skills_group = QGroupBox("Skills File (Optional)")
+        skills_layout = QHBoxLayout(skills_group)
+        self._skills_path_input = QLineEdit()
+        self._skills_path_input.setReadOnly(True)
+        self._skills_path_input.setPlaceholderText("No file selected...")
+        self._skills_path_input.setText(self._settings.get("skills_md_path", ""))
+        skills_layout.addWidget(self._skills_path_input, 1)
+
+        browse_btn = QPushButton("Browse...")
+        browse_btn.setFixedWidth(80)
+        browse_btn.clicked.connect(self._browse_skills_file)
+        skills_layout.addWidget(browse_btn)
+
+        clear_btn = QPushButton("Clear")
+        clear_btn.setFixedWidth(60)
+        clear_btn.clicked.connect(self._clear_skills_file)
+        skills_layout.addWidget(clear_btn)
+
+        layout.addWidget(skills_group)
 
         # Test & Save buttons
         self.test_btn = QPushButton("Test Connection")
@@ -351,6 +372,20 @@ class SettingsDialog(QDialog):
             QMessageBox.warning(self, "Missing Base URL", "Please enter the API base URL.")
             return
 
+        skills_path = self._skills_path_input.text().strip()
+        self._settings.set("skills_md_path", skills_path)
+
         self._config.save(provider_id, api_key, model, base_url)
         QMessageBox.information(self, "Saved", f"Settings saved for {self._config.get_provider_name()}!")
         self.accept()
+
+    def _browse_skills_file(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Skills File", "",
+            "Markdown Files (*.md);;All Files (*)"
+        )
+        if path:
+            self._skills_path_input.setText(path)
+
+    def _clear_skills_file(self):
+        self._skills_path_input.clear()
