@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="screen.png" alt="VDA Screen" width="600"/>
+  <img src="11.png" alt="VDA Screen" width="600"/>
 
   # 🤖 VDA — Virtual Desktop Assistant
   
