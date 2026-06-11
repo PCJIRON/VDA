@@ -1,4 +1,4 @@
-# VDA — Voice-Driven Desktop Agent
+# VDA — Virtual Desktop Assistant
 
 
 VDA is a powerful, local, AI-driven desktop assistant designed to control computers like a human. It sees your screen, clicks, types, and can be instructed via voice or text. Built with Python and PyQt6, VDA features a floating assistant window, advanced vision-based UI element detection (including fallback to OCR and SIFT), and integration with multiple AI providers (OpenCode Zen, OpenRouter, Gemini, DeepSeek).
