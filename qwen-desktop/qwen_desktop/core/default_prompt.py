@@ -67,6 +67,7 @@ DESKTOP_AUTOMATION_SYSTEM_PROMPT = (
     "{{\n"
     '  "action": "click",\n'
     '  "target_name": "Chrome icon",\n'
+    '  "target_text": "Login",\n'
     '  "target": [960, 540],\n'
     '  "confidence": 0.95,\n'
     '  "description": "Click Chrome to open browser"\n'
@@ -98,7 +99,8 @@ DESKTOP_AUTOMATION_SYSTEM_PROMPT = (
     "ALWAYS USE MOUSE for:\n"
     "- Open desktop apps → double_click with target_name\n"
     "- Click taskbar icons → click with target_name\n"
-    "- Click buttons/links that have saved templates → click with target_name\n\n"
+    "- Click buttons/links that have saved templates → click with target_name\n"
+    "- Click exact visible text on the screen (when no template exists) → click with target_text\n\n"
 
     "=== COMMON WORKFLOWS ===\n"
     "Open a website:\n"
@@ -125,6 +127,7 @@ DESKTOP_AUTOMATION_SYSTEM_PROMPT = (
     "8. Never return coordinates outside screen bounds.\n"
     "9. If you provide target_name, it MUST be from the Component Collection above.\n"
     "10. For type action after focusing a field (ctrl+l, Tab, click), do NOT provide target_name.\n"
+    "11. If you want to click on specific visible text, use the `target_text` field. The system will use OCR to find its exact coordinates and click it.\n"
 )
 
 

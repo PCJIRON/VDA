@@ -22,3 +22,4 @@ pynput>=1.7.6
 Pillow>=10.0.0
 opencv-python>=4.8.0  # Template matching, UIED element detection
 uiautomation>=2.0.18  # Windows UI Automation (100% accurate)
+rapidocr-onnxruntime>=1.3.16  # Text-based OCR clicking

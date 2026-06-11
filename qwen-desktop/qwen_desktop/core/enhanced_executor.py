@@ -140,6 +140,7 @@ class EnhancedExecutor:
                     "y": 0,
                     "text": data.get("text", ""),
                     "target_name": data.get("target_name", ""),
+                    "target_text": data.get("target_text", ""),
                     "description": data.get("description", ""),
                     "confidence": float(data.get("confidence", 1.0)),
                 }
@@ -157,6 +158,7 @@ class EnhancedExecutor:
             "y": sy,
             "text": data.get("text", ""),
             "target_name": data.get("target_name", ""),
+            "target_text": data.get("target_text", ""),
             "description": data.get("description", ""),
             "confidence": float(data.get("confidence", 0.5)),
         }
@@ -178,11 +180,23 @@ class EnhancedExecutor:
         x = parsed.get("x", 0)
         y = parsed.get("y", 0)
         target_name = parsed.get("target_name")
+        target_text = parsed.get("target_text")
 
         template_matched = False
+        text_matched = False
 
-        # Try template matching if target_name is provided and a saved template exists
-        if target_name and action in (self.CLICK, self.DOUBLE_CLICK, self.RIGHT_CLICK, self.MOVE, "type"):
+        # 1. Try OCR if target_text is provided
+        if target_text and action in (self.CLICK, self.DOUBLE_CLICK, self.RIGHT_CLICK, self.MOVE, "type"):
+            res = self.find_with_ocr(target_text, llm_x=x, llm_y=y)
+            if res:
+                x, y = res
+                text_matched = True
+                logger.info(f"[EnhancedExecutor] Found text '{target_text}' via OCR at ({x}, {y})")
+            else:
+                return f"Error: OCR could not find the exact text '{target_text}' on the screen. Please try another approach."
+
+        # 2. Try template matching if target_name is provided
+        elif target_name and action in (self.CLICK, self.DOUBLE_CLICK, self.RIGHT_CLICK, self.MOVE, "type"):
             template_dir = os.path.join(os.path.expanduser("~"), ".qwen_desktop", "uied_templates")
             if os.path.exists(template_dir):
                 import glob
@@ -214,8 +228,8 @@ class EnhancedExecutor:
                     # Don't click LLM coordinates — just type at current cursor position
                     logger.info(f"[EnhancedExecutor] No template for '{target_name}', typing at current cursor position.")
                     x, y = 0, 0  # Reset coords so type action doesn't click anywhere
-        elif not target_name and action in (self.CLICK, self.DOUBLE_CLICK, self.RIGHT_CLICK, self.MOVE):
-            return f"Error: Cannot execute {action} without a target_name. LLM coordinates are strictly disabled."
+        elif not target_name and not target_text and action in (self.CLICK, self.DOUBLE_CLICK, self.RIGHT_CLICK, self.MOVE):
+            return f"Error: Cannot execute {action} without a target_name or target_text. LLM coordinates are strictly disabled."
 
         # --- Execute the action ---
 
@@ -337,3 +351,45 @@ class EnhancedExecutor:
         except Exception as e:
             logger.error(f"[EnhancedExecutor] Template matching error: {e}")
         return None
+
+    def find_with_ocr(self, target_text: str, llm_x: int = 0, llm_y: int = 0):
+        """Use RapidOCR to find exact screen coordinates of text."""
+        try:
+            from rapidocr_onnxruntime import RapidOCR
+            import numpy as np
+            import pyautogui
+            
+            ocr = RapidOCR()
+            screenshot = pyautogui.screenshot()
+            result, _ = ocr(np.array(screenshot))
+            
+            if not result:
+                return None
+                
+            best_match = None
+            best_dist = float('inf')
+            target_lower = target_text.lower().strip()
+            
+            for box, text, score in result:
+                # box is [ [x1,y1], [x2,y1], [x2,y2], [x1,y2] ]
+                if target_lower in text.lower() or text.lower() in target_lower:
+                    pts = np.array(box, np.int32)
+                    cx = int(np.mean(pts[:, 0]))
+                    cy = int(np.mean(pts[:, 1]))
+                    
+                    if llm_x and llm_y:
+                        dist = ((cx - llm_x)**2 + (cy - llm_y)**2)**0.5
+                    else:
+                        dist = 0
+                        
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_match = (cx, cy)
+                        
+            return best_match
+        except ImportError:
+            logger.error("[EnhancedExecutor] rapidocr-onnxruntime not installed.")
+            return None
+        except Exception as e:
+            logger.error(f"[EnhancedExecutor] OCR Error: {e}")
+            return None
