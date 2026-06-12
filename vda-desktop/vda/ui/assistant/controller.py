@@ -767,7 +767,6 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
 
     def _handle_api(self, text, attachments):
         self._set_stop_mode()
-        self._agent_running_text = "Thinking\u2026\n"
         self.history_popup.add_message("Thinking\u2026", "ai")
         self.history_popup.set_thinking_status("Thinking\u2026")
         # Remember the original user text for fallback (vision may rewrite it)
@@ -1097,14 +1096,9 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
 
     def _on_agent_finished(self, final_output, api_client, user_text, history, vision_mode):
         """Handle agent completion — fall back to direct LLM call if no usable text."""
+        self.history_popup.set_thinking_status("")
         if isinstance(final_output, dict) and final_output.get("summary"):
             summary = final_output.get("summary")
-            if hasattr(self, "_agent_running_text") and self._agent_running_text:
-                base_text = self._agent_running_text
-                if base_text.startswith("Thinking\u2026\n"):
-                    base_text = base_text[len("Thinking\u2026\n"):]
-                if base_text.strip():
-                    summary = base_text.strip() + "\n\n" + summary
             self._on_api_finished(summary)
             return
 
@@ -1112,12 +1106,6 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         results = final_output.get("results") if isinstance(final_output, dict) else final_output
         formatted = self._format_results(results)
         if formatted:
-            if hasattr(self, "_agent_running_text") and self._agent_running_text:
-                base_text = self._agent_running_text
-                if base_text.startswith("Thinking\u2026\n"):
-                    base_text = base_text[len("Thinking\u2026\n"):]
-                if base_text.strip():
-                    formatted = base_text.strip() + "\n\n" + formatted
             self._on_api_finished(formatted)
             return
 
@@ -1126,38 +1114,32 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         self._launch_direct_llm(api_client, user_text, history, vision_mode)
 
     def _on_tool_executed(self, tool_name, args, result, success):
-        """Handle tool execution signal to output real-time logs inside the chat bubble."""
-        if not hasattr(self, "_agent_running_text") or not self._agent_running_text:
-            self._agent_running_text = "Thinking\u2026\n"
-
+        """Handle tool execution signal by updating the thinking status (OpenCode style)."""
         status_icon = "✅" if success else "❌"
         
         if tool_name == "terminal":
             cmd = args.get("command", "")
-            formatted = f"\n\n💻 **[Shell]** `$ {cmd}` {status_icon}\n"
-            self._agent_running_text += formatted
+            if len(cmd) > 30: cmd = cmd[:27] + "..."
+            status = f"Running shell: {cmd} {status_icon}"
         elif tool_name == "web_search":
             query = args.get("query", "")
-            formatted = f"\n\n🔍 **Searching Web:** *\"{query}\"* {status_icon}\n"
-            self._agent_running_text += formatted
+            status = f"Searching web: {query} {status_icon}"
         elif tool_name == "web_fetch":
             url = args.get("url", "")
-            formatted = f"\n\n🌐 **Fetching Page:** *{url}* {status_icon}\n"
-            self._agent_running_text += formatted
+            status = f"Fetching page: {url} {status_icon}"
         elif tool_name in ("file_read", "file_write", "file_glob", "file_grep"):
             path = args.get("filepath", args.get("pattern", args.get("query", "")))
-            formatted = f"\n\n📁 **File Op ({tool_name}):** `{path}` {status_icon}\n"
-            self._agent_running_text += formatted
+            status = f"File op ({tool_name}): {path} {status_icon}"
         elif tool_name == "voice":
-            text = args.get("text", "")
-            formatted = f"\n\n🔊 **Speaking:** *\"{text}\"* {status_icon}\n"
-            self._agent_running_text += formatted
+            status = f"Speaking... {status_icon}"
         elif tool_name == "agent":
             prompt = args.get("prompt", "")
-            formatted = f"\n\n🤖 **Sub-Agent Deployed:** *\"{prompt[:50]}...\"* {status_icon}\n"
-            self._agent_running_text += formatted
+            if len(prompt) > 30: prompt = prompt[:27] + "..."
+            status = f"Sub-agent: {prompt} {status_icon}"
+        else:
+            status = f"Using {tool_name}... {status_icon}"
 
-        self.history_popup.update_last_message(self._agent_running_text)
+        self.history_popup.set_thinking_status(status)
 
     def _launch_direct_llm(self, api_client, user_text, history, vision_mode):
         """Start a direct APIServerWorker as a fallback (no agent loop).
