@@ -8,7 +8,7 @@
 
 import logging
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QVariantAnimation, QEasingCurve
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QGraphicsDropShadowEffect,
@@ -31,7 +31,7 @@ class ChatHistoryPopup(QWidget):
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.SubWindow | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(600, 500)
+        self.setFixedSize(460, 500)
         self._last_ai_bubble = None
         # thinking_panel parameter kept for backward compat but no longer embedded
         self._sessions_visible = False
@@ -43,9 +43,9 @@ class ChatHistoryPopup(QWidget):
         self.container.setObjectName("HistoryContainer")
         self.container.setStyleSheet("""
             #HistoryContainer {
-                background-color: #0B0F19;
+                background-color: #0f0f11;
                 border-radius: 16px;
-                border: 1px solid #2A2F42;
+                border: 1px solid #262626;
             }
         """)
 
@@ -63,8 +63,8 @@ class ChatHistoryPopup(QWidget):
         header = QFrame()
         header.setStyleSheet("""
             QFrame {
-                background-color: #151924;
-                border-bottom: 1px solid #2A2F42;
+                background-color: #0f0f11;
+                border-bottom: 1px solid #262626;
                 border-top-left-radius: 16px;
                 border-top-right-radius: 16px;
             }
@@ -131,8 +131,8 @@ class ChatHistoryPopup(QWidget):
         self.sidebar.setFixedWidth(220)
         self.sidebar.setStyleSheet("""
             QFrame {
-                background-color: #151924;
-                border-right: 1px solid #2A2F42;
+                background-color: #151518;
+                border-right: 1px solid #262626;
                 border-bottom-left-radius: 16px;
             }
         """)
@@ -149,11 +149,11 @@ class ChatHistoryPopup(QWidget):
         scroll_style = """
             QScrollArea {
                 border: none;
-                background: #151924;
+                background: #151518;
             }
             QScrollBar:vertical { border: none; background: transparent; width: 6px; margin: 0px; }
-            QScrollBar::handle:vertical { background: #334155; min-height: 30px; border-radius: 3px; }
-            QScrollBar::handle:vertical:hover { background: #475569; }
+            QScrollBar::handle:vertical { background: #262626; min-height: 30px; border-radius: 3px; }
+            QScrollBar::handle:vertical:hover { background: #404040; }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
         """
@@ -166,11 +166,25 @@ class ChatHistoryPopup(QWidget):
         self.session_layout.setContentsMargins(8, 10, 8, 10)
         self.session_layout.setSpacing(4)
 
+        # New chat button matching React vda-gui
+        self.new_chat_btn = QPushButton("+ New chat")
+        self.new_chat_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent; color: #e5e5e5; border: 1px solid #262626;
+                border-radius: 12px; padding: 8px; font-size: 13px; font-weight: 500;
+            }
+            QPushButton:hover { background: #262626; }
+        """)
+        self.new_chat_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.new_chat_clicked = None
+        self.new_chat_btn.clicked.connect(lambda: self.new_chat_clicked() if self.new_chat_clicked else None)
+        self.session_layout.addWidget(self.new_chat_btn)
+
         # Session list header
         session_header = QLabel("Recent chats")
         session_header.setStyleSheet(
             "color: #64748B; font-size: 11px; font-weight: bold; "
-            "padding: 4px 8px 8px 8px; background: transparent;"
+            "padding: 10px 8px 8px 8px; background: transparent;"
         )
         self.session_layout.addWidget(session_header)
 
@@ -242,9 +256,32 @@ class ChatHistoryPopup(QWidget):
 
         outer_layout.addWidget(self.container)
 
+    def _on_resize_anim(self, val: int):
+        self.setUpdatesEnabled(False)
+        self.setFixedSize(val, 500)
+        sidebar_w = max(0, val - 460)
+        self.session_scroll.setFixedWidth(sidebar_w)
+        self.setUpdatesEnabled(True)
+        self.update()
+
     def _toggle_sessions(self):
-        """Show/hide the session list sidebar."""
+        """Show/hide the session list sidebar with a width transition."""
         self._sessions_visible = not self._sessions_visible
+        
+        # Stop existing animation if running
+        if hasattr(self, '_resize_anim') and self._resize_anim.state() == QVariantAnimation.State.Running:
+            self._resize_anim.stop()
+
+        start_w = self.width()
+        end_w = 680 if self._sessions_visible else 460
+
+        self._resize_anim = QVariantAnimation(self)
+        self._resize_anim.setDuration(350)
+        self._resize_anim.setStartValue(start_w)
+        self._resize_anim.setEndValue(end_w)
+        self._resize_anim.setEasingCurve(QEasingCurve.Type.OutQuart)
+        self._resize_anim.valueChanged.connect(self._on_resize_anim)
+
         if self._sessions_visible:
             self.session_scroll.show()
             self.sessions_btn.setStyleSheet("""
@@ -255,7 +292,6 @@ class ChatHistoryPopup(QWidget):
                 QPushButton:hover { background: rgba(255,255,255,0.2); }
             """)
         else:
-            self.session_scroll.hide()
             self.sessions_btn.setStyleSheet("""
                 QPushButton {
                     background: transparent; color: white; border: none;
@@ -263,6 +299,11 @@ class ChatHistoryPopup(QWidget):
                 }
                 QPushButton:hover { background: rgba(255,255,255,0.1); border-radius: 6px; }
             """)
+            def on_finished():
+                self.session_scroll.hide()
+            self._resize_anim.finished.connect(on_finished)
+
+        self._resize_anim.start()
 
     def populate_sessions(self, sessions, click_callback):
         """Replace the session list with the given sessions."""

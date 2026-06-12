@@ -33,34 +33,37 @@ class MessageBubble(QWidget):
         row.setSpacing(8)
 
         # Avatar circle
-        avatar = QLabel("\U0001F464" if sender == "user" else "")
+        avatar = QLabel("")
         avatar.setFixedSize(28, 28)
         avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        import os
+        from PyQt6.QtGui import QPainter
+        from PyQt6.QtSvg import QSvgRenderer
+        
         if sender == "user":
+            svg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources", "icons", "user.svg"))
             avatar.setStyleSheet(
-                "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #9333ea, stop:1 #2563eb); "
-                "color: white; border-radius: 14px; font-size: 14px; font-weight: bold;"
+                "background-color: #2563eb; border-radius: 14px;"
             )
         else:
-            import os
-            from PyQt6.QtGui import QPainter
-            from PyQt6.QtSvg import QSvgRenderer
-            svg_path = os.path.join(os.path.dirname(__file__), "..", "assets", "star.svg")
-            renderer = QSvgRenderer(svg_path)
-            pixmap = QPixmap(18, 18)
-            pixmap.fill(Qt.GlobalColor.transparent)
-            if renderer.isValid():
-                painter = QPainter(pixmap)
-                renderer.render(painter)
-                painter.end()
-                avatar.setPixmap(pixmap)
-            else:
-                avatar.setText("★")
-                avatar.setStyleSheet("color: white; font-size: 14px;")
-            
+            svg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources", "icons", "sparkles.svg"))
             avatar.setStyleSheet(
-                "background: #0B0F19; border: 1px solid rgba(147, 51, 234, 0.4); border-radius: 14px;"
+                "background-color: #262626; border: 1px solid #404040; border-radius: 14px;"
             )
+
+        renderer = QSvgRenderer(svg_path)
+        pixmap = QPixmap(14, 14)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        if renderer.isValid():
+            painter = QPainter(pixmap)
+            renderer.render(painter)
+            painter.end()
+            avatar.setPixmap(pixmap)
+        else:
+            avatar.setText("\U0001F464" if sender == "user" else "★")
+            avatar.setStyleSheet("color: white; font-size: 14px;" + ("background-color: #2563eb; border-radius: 14px;" if sender == "user" else "background-color: #262626; border-radius: 14px;"))
+            
         avatar.setMaximumSize(28, 28)
 
         self.frame = QFrame()
@@ -72,7 +75,7 @@ class MessageBubble(QWidget):
         if sender == "user":
             self.frame.setStyleSheet("""
                 QFrame {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #9333ea, stop:1 #2563eb);
+                    background-color: #262626;
                     color: white;
                     border-radius: 16px;
                 }
@@ -80,9 +83,9 @@ class MessageBubble(QWidget):
         else:
             self.frame.setStyleSheet("""
                 QFrame {
-                    background-color: #151924;
-                    color: #F8FAFC;
-                    border: 1px solid #2A2F42;
+                    background-color: transparent;
+                    color: #e5e5e5;
+                    border: 1px solid #262626;
                     border-radius: 16px;
                 }
             """)
@@ -118,8 +121,8 @@ class MessageBubble(QWidget):
             self._thinking_content = QLabel("")
             self._thinking_content.setWordWrap(True)
             self._thinking_content.setStyleSheet("""
-                background: #0B0F19; color: #94A3B8; border: none;
-                border-left: 2px solid #2A2F42; padding: 4px 8px;
+                background: #151518; color: #a3a3a3; border: none;
+                border-left: 2px solid #404040; padding: 4px 8px;
                 font-size: 10px; font-family: monospace;
             """)
             self._thinking_content.setMaximumHeight(0)

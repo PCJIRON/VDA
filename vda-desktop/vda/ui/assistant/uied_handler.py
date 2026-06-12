@@ -206,6 +206,7 @@ class UIEDHandlerMixin:
 
         self._uied_components = []
         self._is_uied_detecting = False
+        self.uied_btn.set_detecting(False)
         self.uied_btn.set_has_results(False, 0)
 
     def _on_uied_component_selected(self, component: dict):

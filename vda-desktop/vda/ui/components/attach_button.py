@@ -1,5 +1,18 @@
+import os
 from .base_button import BaseButton
 
+
 class AttachButton(BaseButton):
+
     def __init__(self, parent=None):
-        super().__init__("\uE723", parent)
+        svg_path = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "..",
+                "resources",
+                "icons",
+                "attach.svg",
+            )
+        )
+        super().__init__(svg_path, parent)

@@ -35,6 +35,7 @@ from vda.ui.components.attach_button import AttachButton
 from vda.ui.components.send_button import SendButton
 from vda.ui.components.settings_button import SettingsButton
 from vda.ui.components.uied_button import UIEDButton
+from vda.ui.components.voice_button import VoiceButton
 from vda.ui.settings_dialog import SettingsDialog
 from vda.ui.assistant.chat_popup import ChatHistoryPopup
 from vda.ui.assistant.worker import APIServerWorker
@@ -45,13 +46,9 @@ from vda.ui.assistant.thinking_panel import ThinkingPanel
 from vda.ui.assistant.vision_handler import VisionHandlerMixin
 from vda.ui.assistant.uied_handler import UIEDHandlerMixin
 
-try:
-    import uiautomation as auto
-    UI_AUTOMATION_AVAILABLE = True
-    logging.info("[UIA] UI Automation loaded successfully")
-except ImportError:
-    UI_AUTOMATION_AVAILABLE = False
-    logging.warning("[UIA] UI Automation not available (Windows only)")
+import os
+UI_AUTOMATION_SUPPORTED = os.name == "nt"
+auto = None
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +62,8 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self.is_hovered = False
         self.is_expanded = False
         self.is_dragging = False
-
         import os
-        svg_path = os.path.join(os.path.dirname(__file__), "..", "assets", "star.svg")
+        svg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources", "icons", "sparkles.svg"))
         self.star_renderer = QSvgRenderer(svg_path)
 
         self.is_vision_enabled = False
@@ -79,8 +75,8 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self.drag_position = QPoint()
         self._press_position = QPoint()
 
-        self.collapsed_size = 70
-        self.expanded_size = 450
+        self.collapsed_size = 64
+        self.expanded_size = 460
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
@@ -101,6 +97,7 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self.thinking_panel = ThinkingPanel()
         self.history_popup = ChatHistoryPopup(thinking_panel=self.thinking_panel)
         self.history_popup.close_btn.clicked.connect(self.toggle_expand)
+        self.history_popup.new_chat_clicked = self.start_new_session
 
         self._setup_ui()
         self._setup_context_menu()
@@ -121,7 +118,7 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self._template_cache = {}
         self._template_threshold = 0.8
 
-        self._use_ui_automation = UI_AUTOMATION_AVAILABLE
+        self._use_ui_automation = UI_AUTOMATION_SUPPORTED
 
         self._uied_overlay = None
         self._uied_components = []
@@ -153,6 +150,16 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
     def _find_with_ui_automation(self, target_name: str) -> Optional[Tuple[int, int, str]]:
         if not self._use_ui_automation:
             return None
+        global auto
+        if auto is None:
+            try:
+                import uiautomation as _auto
+                auto = _auto
+                logger.info("[UIA] UI Automation loaded successfully (lazy)")
+            except Exception as e:
+                logger.warning(f"[UIA] UI Automation load failed: {e}")
+                self._use_ui_automation = False
+                return None
         try:
             target = target_name.lower().replace('_', ' ').strip()
             try:
@@ -206,21 +213,22 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
 
         self.input_wrapper = QWidget()
         self.input_layout = QHBoxLayout(self.input_wrapper)
-        self.input_layout.setContentsMargins(15, 0, 10, 0)
+        self.input_layout.setContentsMargins(8, 0, 8, 0)
+        self.input_layout.setSpacing(2)
+
+        # Visual Drag Grip matching GripVertical
+        self.drag_grip = QLabel("⠇")
+        self.drag_grip.setStyleSheet("color: #737373; font-size: 16px; font-weight: bold; background: transparent; padding-left: 4px;")
 
         self.input_field = QLineEdit()
-        self.input_field.setPlaceholderText("Ask AI...")
+        self.input_field.setPlaceholderText("Ask anything...")
         self.input_field.setStyleSheet("""
             QLineEdit {
-                background-color: #151924;
+                background-color: transparent;
                 color: white;
-                border: 1px solid #2A2F42;
-                border-radius: 8px;
-                padding: 8px 12px;
-                font-size: 14px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #9333ea;
+                border: none;
+                padding: 8px 4px;
+                font-size: 15px;
             }
         """)
         self.input_field.returnPressed.connect(self.submit_message)
@@ -238,15 +246,21 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self.settings_btn = SettingsButton()
         self.settings_btn.clicked.connect(self.open_settings)
 
+        self.voice_btn = VoiceButton()
+        self.voice_btn.clicked.connect(self.toggle_voice)
+
         self.uied_btn = UIEDButton()
         self.uied_btn.clicked.connect(self.trigger_uied_detection)
 
-        self.input_layout.addWidget(self.settings_btn)
+        # Expanded layout matching React layout order: Grip -> Input -> Settings -> Voice -> Vision -> UIED -> Attach -> Send
+        self.input_layout.addWidget(self.drag_grip)
         self.input_layout.addWidget(self.input_field, 1)
-        self.input_layout.addWidget(self.send_btn)
+        self.input_layout.addWidget(self.settings_btn)
+        self.input_layout.addWidget(self.voice_btn)
         self.input_layout.addWidget(self.vision_btn)
         self.input_layout.addWidget(self.uied_btn)
         self.input_layout.addWidget(self.attach_btn)
+        self.input_layout.addWidget(self.send_btn)
 
         self.input_wrapper.setMinimumWidth(0)
         self.input_wrapper.setMaximumWidth(self.expanded_size - self.collapsed_size)
@@ -293,9 +307,9 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
 
         painter.setOpacity(1.0 if (self.is_hovered or self.is_expanded) else 0.8)
 
-        painter.setBrush(QBrush(QColor("#0B0F19"))) # Deep Navy background
+        painter.setBrush(QBrush(QColor("#1e1e24"))) # Dark charcoal background to match React vda-gui
         
-        pen = QPen(QColor("#9333ea")) # Subtle purple border
+        pen = QPen(QColor("#404040")) # Neutral border
         pen.setWidth(1)
         painter.setPen(pen)
         
@@ -321,11 +335,13 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "★")
 
     def _on_anim_step(self, val: int):
-        self.setFixedSize(val, self.collapsed_size)
+        self.setUpdatesEnabled(False)
         new_x = self._anim_right_edge - val + 1
-        self.move(new_x, self.y())
+        self.setGeometry(new_x, self.y(), val, self.collapsed_size)
         panel_w = max(0, val - self.collapsed_size)
         self.panel_container.setFixedWidth(panel_w)
+        self.setUpdatesEnabled(True)
+        self.update()
 
     def update_size(self, expand: bool):
         target_width = self.expanded_size if expand else self.collapsed_size
@@ -341,8 +357,8 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self._anim_right_edge = self.geometry().right()
 
         self.anim = QVariantAnimation(self)
-        self.anim.setDuration(250)
-        self.anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.anim.setDuration(350)
+        self.anim.setEasingCurve(QEasingCurve.Type.OutQuart)
         self.anim.valueChanged.connect(self._on_anim_step)
 
         self.anim.setStartValue(self.width())
@@ -432,6 +448,9 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         else:
             self.history_popup.hide()
 
+    def toggle_voice(self):
+        self.history_popup.add_message("Voice Input is currently simulated.", "ai")
+
     def position_history_popup(self):
         screen = QApplication.primaryScreen().availableGeometry()
         x = self.x() + self.width() - self.history_popup.width()
@@ -458,6 +477,19 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self.history_popup.clear_chat()
         for msg in self._chat_history:
             self.history_popup.add_message(msg["content"], "user" if msg["role"] == "user" else "ai")
+
+    def start_new_session(self):
+        """Reset the conversation context for a new session."""
+        self.session_id = str(uuid.uuid4())
+        self._chat_history = []
+        self.last_msg_uuid = None
+        self.history_popup.clear_chat()
+        self.staged_files = []
+        if hasattr(self, 'staged_widgets'):
+            for w in self.staged_widgets:
+                w.deleteLater()
+            self.staged_widgets = []
+        self.history_popup.staging_scroll.hide()
 
     def open_settings(self):
         dialog = SettingsDialog(self._config, self.settings, self)

@@ -131,27 +131,26 @@ class UIEDOverlayWidget(QWidget):
         # Draw interaction rectangle (drawing new box or resizing)
         if self.is_drawing or self.is_resizing:
             self._draw_interaction_rect(painter)
-        # Draw instruction panel on the side
-        self._draw_instructions(painter)
 
     def _draw_component(self, painter: QPainter, index: int, comp: Dict):
         x, y, w, h = comp.get("x", 0), comp.get("y", 0), comp.get("width", 0), comp.get("height", 0)
         label = comp.get("label", "Unknown")
         comp_type = comp.get("component_type", "other")
         rect = QRect(x, y, w, h)
-        # Choose colours based on state
+        # Choose modern colors matching vda-gui theme
         if index == self.selected_index:
-            border_color = QColor("#00ff00")
-            fill_color = QColor(0, 255, 0, 40)
-            border_width = 4
-        elif index == self.hovered_index:
-            border_color = QColor("#ffff00")
-            fill_color = QColor(255, 255, 0, 60)
-            border_width = 4
-        else:
-            border_color = QColor("#ff0000")
-            fill_color = QColor(255, 0, 0, 20)
+            border_color = QColor("#10b981")  # Emerald active
+            fill_color = QColor(16, 185, 129, 30)
             border_width = 2
+        elif index == self.hovered_index:
+            border_color = QColor("#818cf8")  # Indigo hover
+            fill_color = QColor(129, 140, 248, 30)
+            border_width = 2
+        else:
+            border_color = QColor("#3b82f6")  # Blue default
+            fill_color = QColor(59, 130, 246, 15)
+            border_width = 2
+
         painter.setBrush(QBrush(fill_color))
         painter.setPen(QPen(border_color, border_width))
         painter.drawRect(rect)
@@ -163,8 +162,8 @@ class UIEDOverlayWidget(QWidget):
             self._draw_label(painter, rect, label, comp_type, border_color)
 
     def _draw_resize_handles(self, painter: QPainter, rect: QRect):
-        painter.setBrush(QBrush(QColor("#6366f1")))
-        painter.setPen(QPen(QColor("#4f46e5"), 2))
+        painter.setBrush(QBrush(QColor("#2563eb")))
+        painter.setPen(QPen(QColor("#3b82f6"), 2))
         hs = self.RESIZE_HANDLE_SIZE
         handles = [
             QRect(rect.left() - hs // 2, rect.top() - hs // 2, hs, hs),
@@ -190,47 +189,67 @@ class UIEDOverlayWidget(QWidget):
         label_text = f"{label[:40]}{'...' if len(label) > 40 else ''}"
         font = QFont("Segoe UI", 10)
         painter.setFont(font)
+
+        # Calculate label dimensions
         text_rect = painter.boundingRect(
             QRect(rect.x(), rect.y() - 25, rect.width(), 25),
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             label_text,
         )
-        label_bg_rect = QRect(
-            rect.x(), rect.y() - 25, max(rect.width(), text_rect.width() + 10), 25
-        )
-        painter.setBrush(QBrush(QColor(0, 0, 0, 200)))
-        painter.setPen(QPen(border_color, 2))
+
+        # Determine ideal y coordinate (clamp so it doesn't render offscreen at the top)
+        label_w = max(rect.width(), text_rect.width() + 10)
+        label_h = 25
+
+        if rect.y() >= 30:
+            label_y = rect.y() - 28
+        else:
+            label_y = rect.bottom() + 4
+
+        label_bg_rect = QRect(rect.x(), label_y, label_w, label_h)
+
+        # Draw background container
+        painter.setBrush(QBrush(QColor("#1e1e24")))
+        painter.setPen(QPen(border_color, 1))
         painter.drawRoundedRect(label_bg_rect, 6, 6)
+
+        # Draw label text
         painter.setPen(QColor("#ffffff"))
         painter.drawText(
-            QRect(rect.x() + 5, rect.y() - 25, rect.width(), 25),
+            QRect(rect.x() + 5, label_y, rect.width(), label_h),
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             label_text,
         )
+
         # Type badge on the right side
         type_rect = painter.boundingRect(
             QRect(0, 0, 100, 20), Qt.AlignmentFlag.AlignCenter, comp_type
         )
-        painter.setBrush(QBrush(QColor("#6366f1")))
+
+        badge_w = type_rect.width() + 8
+        badge_h = 18
+        badge_y = label_y + (label_h - badge_h) // 2
+
+        painter.setBrush(QBrush(QColor("#2563eb")))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(
             QRect(
-                rect.right() - type_rect.width() - 8,
-                rect.y() - 25,
-                type_rect.width() + 8,
-                20,
+                rect.x() + label_w - badge_w - 4,
+                badge_y,
+                badge_w,
+                badge_h,
             ),
-            6,
-            6,
+            4,
+            4,
         )
         painter.setPen(QColor("#ffffff"))
         painter.setFont(QFont("Segoe UI", 9))
         painter.drawText(
             QRect(
-                rect.right() - type_rect.width() - 8,
-                rect.y() - 25,
-                type_rect.width() + 8,
-                20,
+                rect.x() + label_w - badge_w - 4,
+                badge_y,
+                badge_w,
+                badge_h,
             ),
             Qt.AlignmentFlag.AlignCenter,
             comp_type,
@@ -239,53 +258,24 @@ class UIEDOverlayWidget(QWidget):
     def _draw_interaction_rect(self, painter: QPainter):
         if self.is_drawing:
             rect = QRect(self.draw_start, self.draw_current).normalized()
-            painter.setBrush(QBrush(QColor(0, 255, 0, 30)))
-            painter.setPen(QPen(QColor("#00ff00"), 2, Qt.PenStyle.DashLine))
+            painter.setBrush(QBrush(QColor(37, 99, 235, 20)))
+            painter.setPen(QPen(QColor("#3b82f6"), 2, Qt.PenStyle.DashLine))
             painter.drawRect(rect)
             w, h = rect.width(), rect.height()
-            painter.setPen(QColor("#00ff00"))
-            painter.setFont(QFont("Consolas", 11, QFont.Weight.Bold))
+            painter.setPen(QColor("#60a5fa"))
+            painter.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+
+            # Position dimensions label so it doesn't go offscreen
+            label_y = rect.y() - 25 if rect.y() >= 30 else rect.bottom() + 5
             painter.drawText(
-                QRect(rect.x(), rect.y() - 25, w, 25),
+                QRect(rect.x(), label_y, w, 25),
                 Qt.AlignmentFlag.AlignCenter,
                 f"{w}×{h}px",
             )
         elif self.is_resizing:
-            painter.setBrush(QBrush(QColor(0, 255, 0, 30)))
-            painter.setPen(QPen(QColor("#00ff00"), 3))
+            painter.setBrush(QBrush(QColor(16, 185, 129, 20)))
+            painter.setPen(QPen(QColor("#10b981"), 2))
             painter.drawRect(self.resize_start_rect)
-
-    def _draw_instructions(self, painter: QPainter):
-        instructions = [
-            f"🛠️ Tool: {self.current_tool.upper()}",
-            "🖱️ Drag: Move box",
-            "🔲 Drag corner: Resize",
-            "✏️ Double-click: Edit label",
-            "🗑️ Right-click: Delete",
-            f"📦 Components: {len(self.components)}",
-        ]
-        panel_w, panel_h = 280, 25 + 28 * len(instructions)
-        panel_rect = QRect(
-            self.width() - panel_w - 20, 20, panel_w, panel_h
-        )
-        painter.setBrush(QBrush(QColor(31, 41, 55, 230)))
-        painter.setPen(QPen(QColor(99, 102, 241), 2))
-        painter.drawRoundedRect(panel_rect, 12, 12)
-        painter.setPen(QColor("#ffffff"))
-        painter.setFont(QFont("Segoe UI", 11))
-        for i, instr in enumerate(instructions):
-            y = 35 + i * 28
-            if i == 0:
-                painter.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-                painter.setPen(QColor("#6366f1"))
-            else:
-                painter.setFont(QFont("Segoe UI", 10))
-                painter.setPen(QColor("#e5e7eb"))
-            painter.drawText(
-                QRect(panel_rect.x() + 15, panel_rect.y() + y - 10, panel_rect.width() - 30, 25),
-                Qt.AlignmentFlag.AlignLeft,
-                instr,
-            )
 
     # ---------------------------------------------------------------------
     # Mouse handling – drawing, dragging, resizing, clicking

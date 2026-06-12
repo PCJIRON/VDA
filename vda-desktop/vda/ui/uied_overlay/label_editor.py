@@ -40,9 +40,9 @@ class LabelEditorDialog(QDialog):
         container.setStyleSheet(
             """
             QFrame {
-                background-color: #1f2937;
+                background-color: #1e1e24;
                 border-radius: 12px;
-                border: 2px solid #6366f1;
+                border: 1px solid #404040;
             }
             """
         )
@@ -50,7 +50,7 @@ class LabelEditorDialog(QDialog):
         container_layout.setContentsMargins(16, 16, 16, 16)
         container_layout.setSpacing(12)
 
-        title = QLabel("✏️ Edit Component Label")
+        title = QLabel("Edit Component Label")
         title.setStyleSheet(
             "color: white; font-weight: bold; font-size: 14px; background: transparent;"
         )
@@ -61,14 +61,14 @@ class LabelEditorDialog(QDialog):
         self.label_input.setStyleSheet(
             """
             QLineEdit {
-                background-color: #374151;
+                background-color: #141418;
                 color: white;
-                border: 1px solid #4b5563;
+                border: 1px solid #404040;
                 border-radius: 6px;
                 padding: 8px 12px;
                 font-size: 13px;
             }
-            QLineEdit:focus { border: 1px solid #6366f1; }
+            QLineEdit:focus { border: 1px solid #2563eb; }
             """
         )
         container_layout.addWidget(self.label_input)
@@ -97,12 +97,21 @@ class LabelEditorDialog(QDialog):
         self.type_combo.setStyleSheet(
             """
             QComboBox {
-                background-color: #374151;
+                background-color: #141418;
                 color: white;
-                border: 1px solid #4b5563;
+                border: 1px solid #404040;
                 border-radius: 6px;
                 padding: 6px 10px;
                 font-size: 13px;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #141418;
+                color: white;
+                selection-background-color: #262626;
+                border: 1px solid #404040;
             }
             """
         )
@@ -112,11 +121,11 @@ class LabelEditorDialog(QDialog):
         button_row = QHBoxLayout()
         button_row.setSpacing(8)
 
-        self.save_btn = QPushButton("💾 Save")
+        self.save_btn = QPushButton("Save")
         self.save_btn.setStyleSheet(
             """
             QPushButton {
-                background-color: #6366f1;
+                background-color: #2563eb;
                 color: white;
                 border: none;
                 border-radius: 6px;
@@ -124,24 +133,24 @@ class LabelEditorDialog(QDialog):
                 font-weight: bold;
                 font-size: 13px;
             }
-            QPushButton:hover { background-color: #4f46e5; }
+            QPushButton:hover { background-color: #1d4ed8; }
             """
         )
         self.save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self.cancel_btn = QPushButton("✕ Cancel")
+        self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setStyleSheet(
             """
             QPushButton {
-                background-color: #374151;
-                color: #9ca3af;
-                border: none;
+                background-color: #262626;
+                color: #e5e5e5;
+                border: 1px solid #404040;
                 border-radius: 6px;
                 padding: 8px 16px;
                 font-size: 13px;
             }
             QPushButton:hover {
-                background-color: #4b5563;
+                background-color: #404040;
                 color: white;
             }
             """

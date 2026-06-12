@@ -3,6 +3,7 @@ import asyncio
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QComboBox, QMessageBox, QGroupBox, QFormLayout, QWidget, QFileDialog,
+    QStackedWidget, QFrame,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QDesktopServices
@@ -40,87 +41,163 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self._config = provider_config
         self._settings = settings
-        self.setWindowTitle("Settings - AI Provider")
-        self.setFixedSize(540, 540)
+        self.setWindowTitle("Settings")
+        self.setFixedSize(720, 500)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
 
+        # Style sheet to match vda-gui charcoal look
         self.setStyleSheet("""
             QDialog {
-                background-color: #0B0F19;
-                color: #F8FAFC;
+                background-color: #1e1e24;
+                color: white;
             }
-            QGroupBox {
-                color: #F8FAFC;
-                border: 1px solid #2A2F42;
-                border-radius: 8px;
-                margin-top: 12px;
-                padding-top: 16px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 12px;
-                padding: 0 4px;
-                color: #94A3B8;
-            }
-            QLabel { color: #F8FAFC; }
+            QLabel { color: #ffffff; background: transparent; }
             QLineEdit, QComboBox {
-                background-color: #151924;
-                color: #F8FAFC;
-                border: 1px solid #2A2F42;
-                border-radius: 6px;
-                padding: 6px;
+                background-color: #141418;
+                color: white;
+                border: 1px solid #404040;
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-size: 14px;
             }
             QLineEdit:focus, QComboBox:focus {
-                border: 1px solid #9333ea;
+                border: 1px solid #2563eb;
             }
             QComboBox::drop-down {
                 border: none;
             }
             QComboBox QAbstractItemView {
-                background-color: #151924;
-                color: #F8FAFC;
-                selection-background-color: #1E293B;
-                border: 1px solid #2A2F42;
+                background-color: #141418;
+                color: white;
+                selection-background-color: #262626;
+                border: 1px solid #404040;
             }
             QPushButton {
-                background-color: #151924;
-                color: #F8FAFC;
-                border: 1px solid #2A2F42;
-                border-radius: 6px;
-                padding: 6px 12px;
+                background-color: #262626;
+                color: #e5e5e5;
+                border: 1px solid #404040;
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-size: 13px;
+                font-weight: 500;
             }
             QPushButton:hover {
-                background-color: #1E293B;
+                background-color: #404040;
             }
             QPushButton:pressed {
-                background-color: #334155;
-            }
-            QPushButton:checked {
-                background-color: #1E293B;
-                border: 1px solid #9333ea;
+                background-color: #151518;
             }
         """)
 
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        # Main horizontal layout (content on left, sidebar on right)
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
-        title = QLabel("AI Provider Settings")
-        title_font = QFont()
-        title_font.setPointSize(14)
-        title_font.setBold(True)
-        title.setFont(title_font)
-        layout.addWidget(title)
+        # Left Content Area (Stacked Widget)
+        self.content_widget = QWidget()
+        self.content_layout = QVBoxLayout(self.content_widget)
+        self.content_layout.setContentsMargins(30, 30, 30, 30)
+        self.content_layout.setSpacing(20)
 
-        desc = QLabel(
-            "Select your AI provider, enter the API key, and pick a model."
-        )
-        desc.setWordWrap(True)
-        desc.setStyleSheet("color: #94A3B8; font-size: 12px;")
-        layout.addWidget(desc)
+        self.content_stack = QStackedWidget()
+        self.content_layout.addWidget(self.content_stack)
+        main_layout.addWidget(self.content_widget, 1)
 
-        # Provider dropdown
-        provider_group = QGroupBox("1. Choose Provider")
-        provider_layout = QVBoxLayout(provider_group)
+        # Right Sidebar Frame
+        self.sidebar = QFrame()
+        self.sidebar.setFixedWidth(220)
+        self.sidebar.setStyleSheet("""
+            QFrame {
+                background-color: #151518;
+                border-left: 1px solid #262626;
+            }
+        """)
+        sidebar_layout = QVBoxLayout(self.sidebar)
+        sidebar_layout.setContentsMargins(16, 20, 16, 20)
+        sidebar_layout.setSpacing(12)
+
+        # Sidebar Title
+        sb_title_row = QHBoxLayout()
+        sb_title = QLabel("SETTINGS")
+        sb_title.setStyleSheet("color: #737373; font-size: 11px; font-weight: bold; letter-spacing: 1px;")
+        sb_close_btn = QPushButton("✕")
+        sb_close_btn.setFixedSize(24, 24)
+        sb_close_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent; color: #a3a3a3; border: none; font-size: 14px; font-weight: bold; padding: 0px;
+            }
+            QPushButton:hover { background: #262626; border-radius: 6px; }
+        """)
+        sb_close_btn.clicked.connect(self.reject)
+        sb_title_row.addWidget(sb_title)
+        sb_title_row.addStretch()
+        sb_title_row.addWidget(sb_close_btn)
+        sidebar_layout.addLayout(sb_title_row)
+
+        # Sidebar Navigation Buttons
+        self.btn_ai = QPushButton("  AI Provider")
+        self.btn_mcp = QPushButton("  MCP Server")
+        self.btn_skills = QPushButton("  Skills")
+
+        for btn in (self.btn_ai, self.btn_mcp, self.btn_skills):
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setFixedHeight(40)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background: transparent; color: #a3a3a3; border: none;
+                    text-align: left; font-size: 13px; font-weight: 500; border-radius: 10px;
+                }
+                QPushButton:hover { background: #262626; color: #e5e5e5; }
+                QPushButton:checked { background: rgba(37, 99, 235, 0.1); color: #60a5fa; }
+            """)
+
+        self.btn_ai.clicked.connect(lambda: self._set_tab('ai'))
+        self.btn_mcp.clicked.connect(lambda: self._set_tab('mcp'))
+        self.btn_skills.clicked.connect(lambda: self._set_tab('skills'))
+
+        sidebar_layout.addWidget(self.btn_ai)
+        sidebar_layout.addWidget(self.btn_mcp)
+        sidebar_layout.addWidget(self.btn_skills)
+        sidebar_layout.addStretch()
+
+        # Save & Close button at bottom of sidebar
+        save_btn = QPushButton("Save & Close")
+        save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: white; color: black; border: none;
+                border-radius: 12px; padding: 10px; font-size: 13px; font-weight: bold;
+            }
+            QPushButton:hover { background-color: #e5e5e5; }
+        """)
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        save_btn.clicked.connect(self._on_save)
+        sidebar_layout.addWidget(save_btn)
+
+        main_layout.addWidget(self.sidebar)
+
+        # === PAGE 1: AI PROVIDER ===
+        page_ai = QWidget()
+        page_ai_layout = QVBoxLayout(page_ai)
+        page_ai_layout.setContentsMargins(0, 0, 0, 0)
+        page_ai_layout.setSpacing(16)
+
+        ai_header = QLabel("AI Provider")
+        ai_header.setStyleSheet("font-size: 20px; font-weight: bold;")
+        ai_desc = QLabel("Configure your preferred AI model and API keys.")
+        ai_desc.setStyleSheet("color: #a3a3a3; font-size: 13px;")
+
+        page_ai_layout.addWidget(ai_header)
+        page_ai_layout.addWidget(ai_desc)
+
+        form_widget = QWidget()
+        form_layout = QFormLayout(form_widget)
+        form_layout.setContentsMargins(0, 10, 0, 10)
+        form_layout.setSpacing(14)
+
+        provider_lbl = QLabel("Provider")
+        provider_lbl.setStyleSheet("font-size: 13px; font-weight: 500; color: #e5e5e5;")
         self.provider_combo = QComboBox()
         provider_ids = []
         for pid, info in PROVIDERS.items():
@@ -130,46 +207,38 @@ class SettingsDialog(QDialog):
         idx = provider_ids.index(current_id) if current_id in provider_ids else 0
         self.provider_combo.setCurrentIndex(idx)
         self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
-        provider_layout.addWidget(self.provider_combo)
+        form_layout.addRow(provider_lbl, self.provider_combo)
 
-        self.docs_link = QLabel()
-        self.docs_link.setStyleSheet("color: #6366f1; font-size: 11px;")
-        self.docs_link.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.docs_link.mousePressEvent = lambda e: self._open_docs()
-        provider_layout.addWidget(self.docs_link)
-        layout.addWidget(provider_group)
-
-        # API Key
-        api_group = QGroupBox("2. Enter API Key")
-        api_layout = QVBoxLayout(api_group)
+        # API Key Row
+        key_lbl = QLabel("API Key")
+        key_lbl.setStyleSheet("font-size: 13px; font-weight: 500; color: #e5e5e5;")
+        
         self.api_key_input = QLineEdit()
         self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key_input.setPlaceholderText("Paste your API key here...")
+        self.api_key_input.setPlaceholderText("Enter your API key...")
         current_key = self._config.get_api_key()
         if current_key:
             self.api_key_input.setText(current_key)
-        api_layout.addWidget(self.api_key_input)
+            
+        form_layout.addRow(key_lbl, self.api_key_input)
 
-        toggle_row = QHBoxLayout()
-        toggle_btn = QPushButton("Show")
-        toggle_btn.setFixedWidth(60)
-        toggle_btn.setCheckable(True)
-        toggle_btn.toggled.connect(
-            lambda checked: self.api_key_input.setEchoMode(
-                QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password
-            )
-        )
-        toggle_row.addWidget(toggle_btn)
-        toggle_row.addStretch()
+        # Helper links and hints for API key
+        hint_row = QHBoxLayout()
+        self.docs_link = QLabel()
+        self.docs_link.setStyleSheet("color: #3b82f6; font-size: 11px; font-weight: 500;")
+        self.docs_link.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.docs_link.mousePressEvent = lambda e: self._open_docs()
+        
         self.api_hint = QLabel()
-        self.api_hint.setStyleSheet("color: #9ca3af; font-size: 11px;")
-        toggle_row.addWidget(self.api_hint)
-        api_layout.addLayout(toggle_row)
-        layout.addWidget(api_group)
+        self.api_hint.setStyleSheet("color: #737373; font-size: 11px;")
+        
+        hint_row.addWidget(self.docs_link)
+        hint_row.addStretch()
+        hint_row.addWidget(self.api_hint)
+        form_layout.addRow("", hint_row)
 
-        # Model selection
-        model_group = QGroupBox("3. Choose Model")
-        model_layout = QVBoxLayout(model_group)
+        model_lbl = QLabel("Model")
+        model_lbl.setStyleSheet("font-size: 13px; font-weight: 500; color: #e5e5e5;")
         self.model_combo = QComboBox()
         self.model_combo.setEditable(True)
         self.model_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
@@ -177,84 +246,139 @@ class SettingsDialog(QDialog):
         current_model = self._config.get_model()
         if current_model:
             self.model_combo.setCurrentText(current_model)
-        model_layout.addWidget(self.model_combo)
+        form_layout.addRow(model_lbl, self.model_combo)
 
-        # Base URL - shown only for Custom provider
+        # Base URL for Custom provider
         self.base_url_container = QWidget()
-        base_url_layout = QHBoxLayout(self.base_url_container)
-        base_url_layout.setContentsMargins(0, 4, 0, 0)
+        base_url_lay = QHBoxLayout(self.base_url_container)
+        base_url_lay.setContentsMargins(0, 0, 0, 0)
         base_url_label = QLabel("Base URL:")
-        base_url_label.setStyleSheet("font-size: 11px; color: #6b7280;")
+        base_url_label.setStyleSheet("font-size: 11px; color: #737373;")
         self.base_url_input = QLineEdit()
         self.base_url_input.setPlaceholderText("https://api.example.com/v1")
-        base_url_layout.addWidget(base_url_label)
-        base_url_layout.addWidget(self.base_url_input, 1)
-        model_layout.addWidget(self.base_url_container)
+        base_url_lay.addWidget(base_url_label)
+        base_url_lay.addWidget(self.base_url_input, 1)
+        form_layout.addRow("", self.base_url_container)
 
-        layout.addWidget(model_group)
+        page_ai_layout.addWidget(form_widget)
 
-        # Skills file (optional)
-        skills_group = QGroupBox("Skills File (Optional)")
-        skills_layout = QHBoxLayout(skills_group)
-        self._skills_path_input = QLineEdit()
-        self._skills_path_input.setReadOnly(True)
-        self._skills_path_input.setPlaceholderText("No file selected...")
-        self._skills_path_input.setText(self._settings.get("skills_md_path", ""))
-        skills_layout.addWidget(self._skills_path_input, 1)
-
-        browse_btn = QPushButton("Browse...")
-        browse_btn.setFixedWidth(80)
-        browse_btn.clicked.connect(self._browse_skills_file)
-        skills_layout.addWidget(browse_btn)
-
-        clear_btn = QPushButton("Clear")
-        clear_btn.setFixedWidth(60)
-        clear_btn.clicked.connect(self._clear_skills_file)
-        skills_layout.addWidget(clear_btn)
-
-        layout.addWidget(skills_group)
-
-        # Test & Save buttons
+        # Connection testing row
+        test_lay = QHBoxLayout()
         self.test_btn = QPushButton("Test Connection")
-        self.test_btn.setStyleSheet("""
-            QPushButton {
-                background: #151924; color: #F8FAFC; border: 1px solid #2A2F42;
-                border-radius: 6px; padding: 8px 18px; font-weight: bold;
-            }
-            QPushButton:hover { background: #1E293B; }
-            QPushButton:disabled { background: #0B0F19; color: #475569; }
-        """)
+        self.test_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.test_btn.clicked.connect(self._on_test)
         self.test_status = QLabel()
-        self.test_status.setStyleSheet("font-size: 11px;")
+        self.test_status.setStyleSheet("font-size: 12px; font-weight: 500;")
         self.test_status.setWordWrap(True)
+        test_lay.addWidget(self.test_btn)
+        test_lay.addWidget(self.test_status, 1)
+        page_ai_layout.addLayout(test_lay)
+        page_ai_layout.addStretch()
 
-        test_row = QHBoxLayout()
-        test_row.addWidget(self.test_btn)
-        test_row.addWidget(self.test_status, 1)
-        layout.addLayout(test_row)
+        self.content_stack.addWidget(page_ai)
 
-        btn_layout = QHBoxLayout()
-        save_btn = QPushButton("Save")
-        save_btn.setStyleSheet("""
+        # === PAGE 2: MCP SERVER ===
+        page_mcp = QWidget()
+        page_mcp_layout = QVBoxLayout(page_mcp)
+        page_mcp_layout.setContentsMargins(0, 0, 0, 0)
+        page_mcp_layout.setSpacing(16)
+
+        mcp_header = QLabel("MCP Server")
+        mcp_header.setStyleSheet("font-size: 20px; font-weight: bold;")
+        mcp_desc = QLabel("Connect to an external Model Context Protocol server.")
+        mcp_desc.setStyleSheet("color: #a3a3a3; font-size: 13px;")
+
+        page_mcp_layout.addWidget(mcp_header)
+        page_mcp_layout.addWidget(mcp_desc)
+
+        mcp_form = QWidget()
+        mcp_form_layout = QFormLayout(mcp_form)
+        mcp_form_layout.setContentsMargins(0, 10, 0, 10)
+        mcp_form_layout.setSpacing(14)
+
+        mcp_url_lbl = QLabel("Server URL")
+        mcp_url_lbl.setStyleSheet("font-size: 13px; font-weight: 500; color: #e5e5e5;")
+        self.mcp_url_input = QLineEdit()
+        self.mcp_url_input.setPlaceholderText("http://localhost:3000/mcp")
+        self.mcp_url_input.setText(self._settings.get("mcp_server_url", ""))
+        mcp_form_layout.addRow(mcp_url_lbl, self.mcp_url_input)
+
+        page_mcp_layout.addWidget(mcp_form)
+        page_mcp_layout.addStretch()
+
+        self.content_stack.addWidget(page_mcp)
+
+        # === PAGE 3: SKILLS ===
+        page_skills = QWidget()
+        page_skills_layout = QVBoxLayout(page_skills)
+        page_skills_layout.setContentsMargins(0, 0, 0, 0)
+        page_skills_layout.setSpacing(16)
+
+        skills_header = QLabel("Agent Skills")
+        skills_header.setStyleSheet("font-size: 20px; font-weight: bold;")
+        skills_desc = QLabel("Upload custom skills for your AI agent to use.")
+        skills_desc.setStyleSheet("color: #a3a3a3; font-size: 13px;")
+
+        page_skills_layout.addWidget(skills_header)
+        page_skills_layout.addWidget(skills_desc)
+
+        self._skills_path_input = QLineEdit()
+        self._skills_path_input.setReadOnly(True)
+        self._skills_path_input.setPlaceholderText("No skills file uploaded...")
+        self._skills_path_input.setText(self._settings.get("skills_md_path", ""))
+
+        self.upload_area = QPushButton("Upload skills.md\n(Click to browse file)")
+        self.upload_area.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.upload_area.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #9333ea, stop:1 #2563eb); 
-                color: white; border: none;
-                border-radius: 6px; padding: 8px 24px; font-weight: bold;
+                border: 2px dashed #404040;
+                border-radius: 12px;
+                background-color: #141418;
+                color: #a3a3a3;
+                padding: 40px;
+                font-size: 13px;
+                text-align: center;
             }
-            QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #a855f7, stop:1 #3b82f6); }
+            QPushButton:hover {
+                border: 2px dashed #6b7280;
+                color: #e5e5e5;
+            }
         """)
-        save_btn.clicked.connect(self._on_save)
+        self.upload_area.clicked.connect(self._browse_skills_file)
 
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.clicked.connect(self.reject)
+        page_skills_layout.addWidget(self._skills_path_input)
+        page_skills_layout.addWidget(self.upload_area)
 
-        btn_layout.addStretch()
-        btn_layout.addWidget(cancel_btn)
-        btn_layout.addWidget(save_btn)
-        layout.addLayout(btn_layout)
+        skills_clear_row = QHBoxLayout()
+        skills_clear_row.addStretch()
+        clear_btn = QPushButton("Clear File")
+        clear_btn.setFixedWidth(100)
+        clear_btn.clicked.connect(self._clear_skills_file)
+        skills_clear_row.addWidget(clear_btn)
+        page_skills_layout.addLayout(skills_clear_row)
+        page_skills_layout.addStretch()
 
+        self.content_stack.addWidget(page_skills)
+
+        # Set default tab
+        self._set_tab('ai')
         self._update_fields()
+
+    def _set_tab(self, tab: str):
+        # Uncheck all navigation buttons first
+        self.btn_ai.setChecked(False)
+        self.btn_mcp.setChecked(False)
+        self.btn_skills.setChecked(False)
+
+        if tab == 'ai':
+            self.btn_ai.setChecked(True)
+            self.content_stack.setCurrentIndex(0)
+        elif tab == 'mcp':
+            self.btn_mcp.setChecked(True)
+            self.content_stack.setCurrentIndex(1)
+        elif tab == 'skills':
+            self.btn_skills.setChecked(True)
+            self.content_stack.setCurrentIndex(2)
 
     def _open_docs(self):
         url = self._config.get_provider_info().get("docs_url", "")
@@ -374,6 +498,9 @@ class SettingsDialog(QDialog):
 
         skills_path = self._skills_path_input.text().strip()
         self._settings.set("skills_md_path", skills_path)
+
+        mcp_url = self.mcp_url_input.text().strip()
+        self._settings.set("mcp_server_url", mcp_url)
 
         self._config.save(provider_id, api_key, model, base_url)
         QMessageBox.information(self, "Saved", f"Settings saved for {self._config.get_provider_name()}!")

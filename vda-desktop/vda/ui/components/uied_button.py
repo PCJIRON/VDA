@@ -5,7 +5,7 @@ Captures a screenshot and triggers UI detection with
 animated states (detecting, ready, etc.).
 """
 
-from PyQt6.QtCore import Qt, QTimer, QRect, QVariantAnimation
+from PyQt6.QtCore import Qt, QTimer, QRect, QRectF, QVariantAnimation
 from PyQt6.QtGui import QColor, QPainter, QBrush, QFont
 
 from .base_button import BaseButton
@@ -21,13 +21,24 @@ class UIEDButton(BaseButton):
     """
 
     def __init__(self, parent=None):
-        super().__init__("\uE73A", parent)
+        import os
+        svg_path = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "..",
+                "resources",
+                "icons",
+                "crop.svg",
+            )
+        )
+        super().__init__(svg_path, parent)
         self._is_detecting = False
         self._has_results = False
         self._detection_count = 0
         self._rotation_angle = 0
         self._pulse_alpha = 50
-        self.setToolTip("UI Element Detection - Capture and label screen components")
+        self.setToolTip("Crop/Screenshot - Capture and label screen components")
 
         self._pulse_timer = QTimer(self)
         self._pulse_timer.timeout.connect(self._on_pulse_timer)
@@ -48,6 +59,12 @@ class UIEDButton(BaseButton):
             self._start_rotation_animation()
             self._pulse_timer.start(50)
         else:
+            if self._anim is not None:
+                try:
+                    self._anim.stop()
+                except Exception:
+                    pass
+                self._anim = None
             self._rotation_angle = 0
             self._pulse_timer.stop()
             self._pulse_alpha = 50
@@ -81,11 +98,13 @@ class UIEDButton(BaseButton):
         elif self._is_detecting:
             bg_color = QColor(37, 99, 235, self._pulse_alpha)
         else:
-            bg_color = QColor(255, 255, 255, 40) if not self._hovered else QColor(255, 255, 255, 70)
+            bg_color = QColor("transparent") if not self._hovered else QColor(255, 255, 255, 30)
 
         painter.setBrush(QBrush(bg_color))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(self.rect(), 8, 8)
+        # Circular radius
+        r = self.rect().height() / 2.0
+        painter.drawRoundedRect(self.rect(), r, r)
 
         painter.save()
         if self._is_detecting:
@@ -94,15 +113,22 @@ class UIEDButton(BaseButton):
             painter.rotate(self._rotation_angle)
             painter.translate(-cx, -cy)
 
-        icon_color = "white"
-        if self._is_detecting:
-            icon_color = "#60a5fa"
-        painter.setPen(QColor(icon_color))
-        font = QFont("Segoe Fluent Icons")
-        font.setPixelSize(16)
-        font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
-        painter.setFont(font)
-        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.fluent_icon)
+        if self.svg_renderer and self.svg_renderer.isValid():
+            icon_size = 18.0
+            x = (self.width() - icon_size) / 2.0
+            y = (self.height() - icon_size) / 2.0
+            target_rect = QRectF(x, y, icon_size, icon_size)
+            self.svg_renderer.render(painter, target_rect)
+        else:
+            icon_color = "white"
+            if self._is_detecting:
+                icon_color = "#60a5fa"
+            painter.setPen(QColor(icon_color))
+            font = QFont("Segoe Fluent Icons")
+            font.setPixelSize(16)
+            font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+            painter.setFont(font)
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.fluent_icon)
         painter.restore()
 
         if self._has_results and self._detection_count > 0:

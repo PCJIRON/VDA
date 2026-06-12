@@ -4,48 +4,79 @@ The toolbar mimics a Figma‑style floating toolbar that lets the user pick the
 current editing tool (move, box, delete) and provides Done/Exit actions.
 """
 
+import os
 from PyQt6.QtWidgets import (
     QWidget,
-    QToolButton,
     QHBoxLayout,
     QFrame,
     QPushButton,
     QGraphicsDropShadowEffect,
     QApplication,
 )
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QSize
-from PyQt6.QtGui import QColor, QCursor
+from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QSize, QRectF
+from PyQt6.QtGui import QColor, QCursor, QPainter, QBrush, QIcon
+from PyQt6.QtSvg import QSvgRenderer
 
 
-class ToolButton(QToolButton):
-    """Styled tool button for the toolbar."""
+class ToolButton(QPushButton):
+    """Styled tool button for the toolbar that renders a vector SVG icon."""
 
-    def __init__(self, icon: str, tooltip: str, shortcut: str = "", parent=None):
-        super().__init__(parent)
-        self.setText(icon)
+    def __init__(self, svg_name: str, tooltip: str, shortcut: str = "", parent=None):
+        super().__init__("", parent)
         self.setToolTip(f"{tooltip} ({shortcut})" if shortcut else tooltip)
-        self.setFixedSize(50, 50)
-        self.setIconSize(QSize(28, 28))
-        self.setStyleSheet(
-            """
-            QToolButton {
-                background-color: #374151;
-                color: white;
-                border: 2px solid #4b5563;
-                border-radius: 8px;
-                font-size: 24px;
-            }
-            QToolButton:hover {
-                background-color: #4b5563;
-                border-color: #6366f1;
-            }
-            QToolButton:checked {
-                background-color: #6366f1;
-                border-color: #4f46e5;
-            }
-            """
-        )
+        self.setFixedSize(40, 40)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        # Resolve icon path
+        svg_path = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "..",
+                "resources",
+                "icons",
+                svg_name,
+            )
+        )
+        self.svg_renderer = None
+        if os.path.exists(svg_path):
+            self.svg_renderer = QSvgRenderer(svg_path)
+
+        self._hovered = False
+
+    def enterEvent(self, event):
+        self._hovered = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hovered = False
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Background color depending on states
+        if self.isChecked():
+            bg_color = QColor("#2563eb")  # Blue active
+        elif self._hovered:
+            bg_color = QColor("#404040")  # Charcoal hover
+        else:
+            bg_color = QColor("transparent")
+
+        painter.setBrush(QBrush(bg_color))
+        painter.setPen(Qt.PenStyle.NoPen)
+        r = self.height() / 2.0
+        painter.drawRoundedRect(self.rect(), r, r)
+
+        # Render SVG Icon
+        if self.svg_renderer and self.svg_renderer.isValid():
+            icon_size = 18.0
+            x = (self.width() - icon_size) / 2.0
+            y = (self.height() - icon_size) / 2.0
+            self.svg_renderer.render(painter, QRectF(x, y, icon_size, icon_size))
 
 
 class DraggableToolbar(QWidget):
@@ -83,9 +114,9 @@ class DraggableToolbar(QWidget):
         container.setStyleSheet(
             """
             QFrame {
-                background-color: rgba(31, 41, 55, 240);
+                background-color: rgba(30, 30, 36, 240);
                 border-radius: 16px;
-                border: 2px solid #6366f1;
+                border: 1px solid #404040;
             }
             """
         )
@@ -93,18 +124,21 @@ class DraggableToolbar(QWidget):
         container_layout.setContentsMargins(12, 8, 12, 8)
         container_layout.setSpacing(6)
 
-        self.move_btn = ToolButton("🖱️", "Move Tool", "V")
+        # Move tool using mouse-pointer.svg
+        self.move_btn = ToolButton("mouse-pointer.svg", "Move Tool", "V")
         self.move_btn.setCheckable(True)
         self.move_btn.setChecked(True)
         self.move_btn.clicked.connect(lambda: self._on_tool_clicked("move"))
         container_layout.addWidget(self.move_btn)
 
-        self.box_btn = ToolButton("⬜", "Box Tool", "B")
+        # Box tool using square.svg
+        self.box_btn = ToolButton("square.svg", "Box Tool", "B")
         self.box_btn.setCheckable(True)
         self.box_btn.clicked.connect(lambda: self._on_tool_clicked("box"))
         container_layout.addWidget(self.box_btn)
 
-        self.delete_btn = ToolButton("🗑️", "Delete Tool", "D")
+        # Delete tool using trash.svg
+        self.delete_btn = ToolButton("trash.svg", "Delete Tool", "D")
         self.delete_btn.setCheckable(True)
         self.delete_btn.clicked.connect(lambda: self._on_tool_clicked("delete"))
         container_layout.addWidget(self.delete_btn)
@@ -112,44 +146,47 @@ class DraggableToolbar(QWidget):
         # Separator
         separator = QFrame()
         separator.setFrameShape(QFrame.Shape.VLine)
-        separator.setStyleSheet("background-color: #4b5563;")
+        separator.setStyleSheet("background-color: #404040;")
         separator.setFixedWidth(2)
         container_layout.addWidget(separator)
 
-        # Done button
-        self.done_btn = QPushButton("✅ Done")
-        self.done_btn.setFixedSize(100, 45)
+        # Done button (loads check.svg icon)
+        icons_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources", "icons"))
+        self.done_btn = QPushButton(" Done")
+        self.done_btn.setIcon(QIcon(os.path.join(icons_dir, "check.svg")))
+        self.done_btn.setFixedSize(100, 40)
         self.done_btn.setStyleSheet(
             """
             QPushButton {
-                background-color: #16a34a;
+                background-color: #2563eb;
                 color: white;
                 border: none;
-                border-radius: 8px;
+                border-radius: 20px;
                 font-weight: bold;
-                font-size: 14px;
+                font-size: 13px;
             }
-            QPushButton:hover { background-color: #15803d; }
+            QPushButton:hover { background-color: #1d4ed8; }
             """
         )
         self.done_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.done_btn.clicked.connect(self._on_done_clicked)
         container_layout.addWidget(self.done_btn)
 
-        # Exit button
-        self.exit_btn = QPushButton("✕ Exit")
-        self.exit_btn.setFixedSize(100, 45)
+        # Exit button (loads x.svg icon)
+        self.exit_btn = QPushButton(" Exit")
+        self.exit_btn.setIcon(QIcon(os.path.join(icons_dir, "x.svg")))
+        self.exit_btn.setFixedSize(100, 40)
         self.exit_btn.setStyleSheet(
             """
             QPushButton {
-                background-color: #dc2626;
-                color: white;
-                border: none;
-                border-radius: 8px;
+                background-color: #262626;
+                color: #e5e5e5;
+                border: 1px solid #404040;
+                border-radius: 20px;
                 font-weight: bold;
-                font-size: 14px;
+                font-size: 13px;
             }
-            QPushButton:hover { background-color: #b91c1c; }
+            QPushButton:hover { background-color: #ef4444; border-color: #ef4444; color: white; }
             """
         )
         self.exit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
