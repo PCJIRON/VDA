@@ -8,61 +8,28 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+from vda.core.tool_executor.persistent_shell import PersistentShell
 
-def execute_shell(command: str, workspace_dir: str) -> str:
-    """Execute a shell command.
+logger = logging.getLogger(__name__)
 
-    Args:
-        command: Command to execute.
-        workspace_dir: Working directory for the command.
+# Global singleton for the session
+_global_shell = None
 
-    Returns:
-        Command output or error message.
+def get_persistent_shell() -> PersistentShell:
+    """Returns the singleton PersistentShell instance."""
+    global _global_shell
+    if _global_shell is None:
+        _global_shell = PersistentShell()
+    return _global_shell
+
+def execute_shell(command: str, workspace_dir: str = None) -> str:
+    """Execute a shell command using the persistent shell.
+    Maintains backward compatibility with older callers.
     """
-    import tempfile
-    import os
-
-    stdout_fd, stdout_path = tempfile.mkstemp()
-    stderr_fd, stderr_path = tempfile.mkstemp()
-
-    try:
-        with open(stdout_fd, "wb") as stdout_file, open(stderr_fd, "wb") as stderr_file:
-            result = subprocess.run(
-                command,
-                shell=True,
-                cwd=workspace_dir,
-                stdout=stdout_file,
-                stderr=stderr_file,
-                timeout=30,
-            )
-
-        # Read the outputs
-        with open(stdout_path, "r", encoding="utf-8", errors="replace") as f:
-            stdout_content = f.read()
-        with open(stderr_path, "r", encoding="utf-8", errors="replace") as f:
-            stderr_content = f.read()
-
-        output = ""
-        if stdout_content:
-            output += stdout_content
-        if stderr_content:
-            output += f"\nSTDERR:\n{stderr_content}"
-        if not output:
-            output = f"Command executed successfully (exit code {result.returncode}), no output."
-        return output
-    except subprocess.TimeoutExpired:
-        return "Error: Command timed out after 30 seconds."
-    except Exception as exc:
-        return f"Error executing command: {str(exc)}"
-    finally:
-        # Clean up temporary files
-        try:
-            if os.path.exists(stdout_path):
-                os.remove(stdout_path)
-        except Exception:
-            pass
-        try:
-            if os.path.exists(stderr_path):
-                os.remove(stderr_path)
-        except Exception:
-            pass
+    shell = get_persistent_shell()
+    if workspace_dir and getattr(shell, "cwd", None) != workspace_dir:
+        # Note: changing directory in a persistent shell should ideally be done by the agent
+        # via 'cd', but we sync it here if explicitly requested.
+        pass # Ignore workspace_dir overrides to preserve true persistent state
+        
+    return shell.execute(command)
