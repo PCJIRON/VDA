@@ -15,3 +15,4 @@ from . import web_fetch  # noqa: F401
 from . import terminal  # noqa: F401
 from . import file_tools  # noqa: F401
 from . import voice_tools  # noqa: F401
+from . import agent  # noqa: F401

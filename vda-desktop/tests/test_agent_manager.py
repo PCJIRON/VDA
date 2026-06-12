@@ -41,9 +41,10 @@ class TestAgentState:
         assert states["COMPLETE"] == "complete"
         assert states["ERROR"] == "error"
         assert states["PAUSED"] == "paused"
+        assert states["SIFT_VERIFY"] == "sift_verify"
         # ITERATE was removed in the re-plan design — verification is implicit
         assert "ITERATE" not in states
-        assert len(states) == 8
+        assert len(states) == 9
 
     def test_enum_values_are_unique(self):
         """Verify no duplicate enum values."""

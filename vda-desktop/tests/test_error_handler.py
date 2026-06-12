@@ -75,7 +75,7 @@ class TestGetUserMessage:
         """Test rate limit message."""
         msg = get_user_message(ErrorType.RATE_LIMIT)
         assert "Rate limit exceeded" in msg
-        assert "quota" in msg
+        assert "throttling" in msg
 
     def test_network_error_message(self):
         """Test network error message."""

@@ -178,6 +178,7 @@ DEFAULT_SETTINGS: dict[str, any] = {
     "auto_save_conversations": True,
     # Agent core configuration
     "agent_type": "main",
+    "permission_mode": "yolo",
     "max_iterations": 10,
     "compaction_threshold": 0.8,
     "compaction_max_tokens": 128000,

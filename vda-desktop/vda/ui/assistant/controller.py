@@ -766,6 +766,8 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         return "\n\n".join(texts)
 
     def _handle_api(self, text, attachments):
+        self._set_stop_mode()
+        self._agent_running_text = "Thinking\u2026\n"
         self.history_popup.add_message("Thinking\u2026", "ai")
         self.history_popup.set_thinking_status("Thinking\u2026")
         # Remember the original user text for fallback (vision may rewrite it)
@@ -963,6 +965,23 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         if not text:
             return True
 
+        # Action-ish signals → not pure chat, let the agent plan
+        action_signals = (
+            "click", "open", "close", "launch", "start ", "stop ",
+            "type ", "search for", "search", "find", "research", "lookup", "look up",
+            "play ", "download", "install",
+            "navigate to", "go to", "visit", "scroll", "drag",
+            "select", "press", "save ", "delete ", "rename",
+            "maximize", "minimize", "switch to", "run ", "execute",
+            "browser", "tab", "window", "file", "folder",
+            "youtube", "google", "gmail", "notepad", "vscode",
+            "code ", "script", "command",
+            # Hindi/Hinglish keywords
+            "karo", "kholo", "chalao", "dhundo", "search karo", "open karo", "run karo",
+        )
+        if any(sig in text for sig in action_signals):
+            return False
+
         chat_only_signals = (
             "hello", "hi ", "hi,", "hey", "namaste", "namaskar",
             "thanks", "thank you", "bye", "goodbye",
@@ -973,20 +992,6 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         )
         if any(sig in text for sig in chat_only_signals):
             return True
-
-        # Action-ish signals → not pure chat, let the agent plan
-        action_signals = (
-            "click", "open", "close", "launch", "start ", "stop ",
-            "type ", "search for", "play ", "download", "install",
-            "navigate to", "go to", "visit", "scroll", "drag",
-            "select", "press", "save ", "delete ", "rename",
-            "maximize", "minimize", "switch to", "run ", "execute",
-            "browser", "tab", "window", "file", "folder",
-            "youtube", "google", "gmail", "notepad", "vscode",
-            "code ", "script", "command",
-        )
-        if any(sig in text for sig in action_signals):
-            return False
 
         # Short messages without action verbs are usually chat
         if len(text.split()) <= 8:
@@ -1036,24 +1041,14 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         # skip the entire agent loop and call the LLM directly. The agent loop is
         # designed for multi-step desktop automation — running it on "hello" causes
         # a 10-iteration doom loop and a 30-second wait for no reason.
-        if not vision_mode:
-            if self._looks_like_chat(user_input):
-                logger.info("[Worker] Chat-mode short-circuit (no agent loop) for: %s", user_input[:60])
-                prompted_history = self._build_history_with_prompt(list(history))
-                self._chat_history.append(
-                    {"role": "user", "content": user_input}
-                )
-                self._launch_direct_llm(api_client, user_input, prompted_history, vision_mode=False)
-                return self.worker
-            else:
-                logger.warning("[Worker] Desktop action blocked because Vision Mode is OFF.")
-                try:
-                    self.history_popup.update_last_message("❌ Error: Desktop control requires Vision Mode to be ON. Please enable Vision Mode.")
-                    self.history_popup.set_thinking_status("")
-                    self._set_send_mode()
-                except Exception as e:
-                    logger.error(f"Error updating UI for blocked vision action: {e}")
-                return None
+        if not vision_mode and self._looks_like_chat(user_input):
+            logger.info("[Worker] Chat-mode short-circuit (no agent loop) for: %s", user_input[:60])
+            prompted_history = self._build_history_with_prompt(list(history))
+            self._chat_history.append(
+                {"role": "user", "content": user_input}
+            )
+            self._launch_direct_llm(api_client, user_input, prompted_history, vision_mode=False)
+            return self.worker
 
         # Build AgentManager and wrap it in AgentWorker for step‑by‑step UI updates
         # Inject a screenshot callable so the agent can grab a fresh
@@ -1071,6 +1066,7 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
             screenshot_fn=self._take_screenshot_b64,
             vision_executor=self._enhanced_executor,
             components=all_components,
+            vision_mode=vision_mode,
         )
         # Attach session info for optional compaction signals
         agent_manager.session_service = self.session_service
@@ -1083,6 +1079,7 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         worker.step_failed.connect(lambda label, err: self.thinking_panel.update_step(label, "failed", err))
         worker.doom_loop_detected.connect(self.thinking_panel.show_doom_loop)
         worker.permission_required.connect(self.thinking_panel.show_permission_request)
+        worker.tool_executed.connect(self._on_tool_executed)
         worker.error_occurred.connect(self._on_api_error)
         # When agent finishes, format results. If results are empty, fall back to direct LLM call.
         # Build a clean history for the fallback that contains the user's original text (not the vision payload)
@@ -1101,19 +1098,66 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
     def _on_agent_finished(self, final_output, api_client, user_text, history, vision_mode):
         """Handle agent completion — fall back to direct LLM call if no usable text."""
         if isinstance(final_output, dict) and final_output.get("summary"):
-            self._on_api_finished(final_output.get("summary"))
+            summary = final_output.get("summary")
+            if hasattr(self, "_agent_running_text") and self._agent_running_text:
+                base_text = self._agent_running_text
+                if base_text.startswith("Thinking\u2026\n"):
+                    base_text = base_text[len("Thinking\u2026\n"):]
+                if base_text.strip():
+                    summary = base_text.strip() + "\n\n" + summary
+            self._on_api_finished(summary)
             return
 
         # Legacy fallback if it's a list or dict with just raw results
         results = final_output.get("results") if isinstance(final_output, dict) else final_output
         formatted = self._format_results(results)
         if formatted:
+            if hasattr(self, "_agent_running_text") and self._agent_running_text:
+                base_text = self._agent_running_text
+                if base_text.startswith("Thinking\u2026\n"):
+                    base_text = base_text[len("Thinking\u2026\n"):]
+                if base_text.strip():
+                    formatted = base_text.strip() + "\n\n" + formatted
             self._on_api_finished(formatted)
             return
 
         # Agent produced no usable text — fall back to direct LLM call for simple text responses
         logger.info("[Agent] No usable results from agent loop — falling back to direct LLM call")
         self._launch_direct_llm(api_client, user_text, history, vision_mode)
+
+    def _on_tool_executed(self, tool_name, args, result, success):
+        """Handle tool execution signal to output real-time logs inside the chat bubble."""
+        if not hasattr(self, "_agent_running_text") or not self._agent_running_text:
+            self._agent_running_text = "Thinking\u2026\n"
+
+        status_icon = "✅" if success else "❌"
+        
+        if tool_name == "terminal":
+            cmd = args.get("command", "")
+            formatted = f"\n\n💻 **[Shell]** `$ {cmd}` {status_icon}\n"
+            self._agent_running_text += formatted
+        elif tool_name == "web_search":
+            query = args.get("query", "")
+            formatted = f"\n\n🔍 **Searching Web:** *\"{query}\"* {status_icon}\n"
+            self._agent_running_text += formatted
+        elif tool_name == "web_fetch":
+            url = args.get("url", "")
+            formatted = f"\n\n🌐 **Fetching Page:** *{url}* {status_icon}\n"
+            self._agent_running_text += formatted
+        elif tool_name in ("file_read", "file_write", "file_glob", "file_grep"):
+            path = args.get("filepath", args.get("pattern", args.get("query", "")))
+            formatted = f"\n\n📁 **File Op ({tool_name}):** `{path}` {status_icon}\n"
+            self._agent_running_text += formatted
+        elif tool_name == "voice":
+            text = args.get("text", "")
+            formatted = f"\n\n🔊 **Speaking:** *\"{text}\"* {status_icon}\n"
+            self._agent_running_text += formatted
+        elif tool_name == "agent":
+            prompt = args.get("prompt", "")
+            formatted = f"\n\n🤖 **Sub-Agent Deployed:** *\"{prompt[:50]}...\"* {status_icon}\n"
+            self._agent_running_text += formatted
+
+        self.history_popup.update_last_message(self._agent_running_text)
 
     def _launch_direct_llm(self, api_client, user_text, history, vision_mode):
         """Start a direct APIServerWorker as a fallback (no agent loop).
@@ -1122,6 +1166,7 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         the agent worker's start), so we deliberately do NOT add a second one.
         Streamed chunks will update the existing bubble via _on_api_chunk.
         """
+        self._set_stop_mode()
         direct_worker = APIServerWorker(api_client, user_text, list(history), vision_mode=vision_mode)
         direct_worker.chunk_received.connect(self._on_api_chunk)
         direct_worker.finished_response.connect(self._on_api_finished)

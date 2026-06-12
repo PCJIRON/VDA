@@ -82,6 +82,10 @@ class PermissionSystem:
         Returns:
             PermissionDecision.ALLOW, DENY, or ASK.
         """
+        # Step 0: Check global permission mode setting (YOLO vs ASK)
+        if self._get_permission_mode() == "yolo":
+            return PermissionDecision.ALLOW
+
         # Step 1: Check session cache
         args_hash = self._hash_args(args or {})
         cache_key = (agent_type, tool_name, args_hash)
@@ -168,6 +172,23 @@ class PermissionSystem:
             if hasattr(self._settings, "get"):
                 return self._settings.get("agent_types", {})
         return AGENT_TYPES
+
+    def _get_permission_mode(self) -> str:
+        """Get the active permission mode from settings.
+
+        Defaults to 'ask' if not specified in settings, so that unit tests
+        and custom configurations default to standard permission prompting.
+        In production, the settings object is pre-populated with the
+        default value 'yolo' from defaults.py.
+        """
+        if self._settings is not None:
+            if isinstance(self._settings, dict):
+                return self._settings.get("permission_mode", "ask")
+            if hasattr(self._settings, "get"):
+                val = self._settings.get("permission_mode")
+                if val is not None:
+                    return val
+        return "ask"
 
     @staticmethod
     def _classify_tool(tool_name: str) -> str:

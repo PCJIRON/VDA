@@ -1,4 +1,5 @@
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +132,44 @@ DESKTOP_AUTOMATION_SYSTEM_PROMPT = (
 )
 
 
+TEXT_AGENT_SYSTEM_PROMPT = (
+    "You are VDA — a text-based task automation agent.\n"
+    "You help the user execute commands, manage files, search the web, and speak results.\n"
+    "You decide the NEXT single action. You do NOT pre-compute a multi-step plan.\n\n"
+
+    "=== CORE LOOP ===\n"
+    "1. Read the USER TASK.\n"
+    "2. Read the STEPS COMPLETED to know what happened.\n"
+    "3. Decide ONE tool step, OR declare done.\n\n"
+
+    "=== OUTPUT — EXACTLY ONE JSON OBJECT ===\n"
+    "Task FINISHED:\n"
+    "```json\n"
+    "{{\n"
+    '  "done": true,\n'
+    '  "summary": "What was accomplished"\n'
+    "}}\n"
+    "```\n"
+    "Task needs ANOTHER STEP:\n"
+    "```json\n"
+    "{{\n"
+    '  "tool": "terminal",\n'
+    '  "args": {{"command": "dir"}},\n'
+    '  "description": "List files in the current directory"\n'
+    "}}\n"
+    "```\n\n"
+
+    "=== AVAILABLE TOOLS ===\n"
+    "{tool_list}\n\n"
+
+    "=== STRICT RULES ===\n"
+    "1. Output ONLY valid JSON. No prose, no explanations, no markdown outside JSON.\n"
+    "2. ONE tool execution per turn. You will see the results of the tool call on the next turn.\n"
+    "3. If a step failed (✗ in history), do NOT repeat it. Try a DIFFERENT command/args.\n"
+    "4. Set done:true ONLY when the user's task is FULLY satisfied.\n"
+)
+
+
 # Backward-compat alias for any caller that still imports the old name
 DESKTOP_ASSISTANT_SYSTEM_PROMPT = DESKTOP_AUTOMATION_SYSTEM_PROMPT
 
@@ -141,23 +180,64 @@ def build_system_prompt(
     components: list[dict] = None,
     vision_mode: bool = False,
     skills_content: str = "",
+    text_agent: bool = False,
+    tool_definitions: list[dict] = None,
 ) -> str:
-    """Return the system prompt appropriate for the current mode.
+    """Return the system prompt appropriate for the current mode."""
+    import os
+    import time
+    import platform
+    import subprocess
+    from vda.core.history_service import HistoryService
+    
+    # Generate Environment Info (OpenCode Style)
+    cwd = os.getcwd()
+    is_git = os.path.exists(os.path.join(cwd, ".git"))
+    plat = platform.system()
+    date_str = time.strftime("%m/%d/%Y")
+    
+    # Get lightweight directory listing
+    try:
+        if plat == "Windows":
+            ls_out = subprocess.check_output("dir /B", shell=True, text=True, stderr=subprocess.STDOUT)
+        else:
+            ls_out = subprocess.check_output("ls", shell=True, text=True, stderr=subprocess.STDOUT)
+    except Exception:
+        ls_out = "Could not list directory."
+        
+    env_info = f"""
+Here is useful information about the environment you are running in:
+<env>
+Working directory: {cwd}
+Is directory a git repo: {'yes' if is_git else 'no'}
+Platform: {plat}
+Today's date: {date_str}
+</env>
+<project>
+{ls_out.strip()[:1000]}
+</project>
+"""
+    # Load Project Memory (OpenCode.md / VDA.md)
+    history_service = HistoryService(cwd=cwd)
+    project_memory = history_service.get_project_memory()
+    
+    if project_memory:
+        env_info += f"\n# Project-Specific Context\n Make sure to follow the instructions in the context below\n{project_memory}\n"
 
-    Args:
-        screen_width: Current screen width in pixels (used for the automation prompt).
-        screen_height: Current screen height in pixels (used for the automation prompt).
-        components: Saved UI element templates (used for the automation prompt).
-        vision_mode: If True, return the JSON-action desktop automation prompt.
-                     If False, return the friendly chat-assistant prompt.
-        skills_content: Optional content from a user-provided skills.md file.
-
-    Returns:
-        A fully-formatted system prompt string ready to prepend to the LLM
-        conversation as a system message.
-    """
+    if text_agent:
+        tool_list = "[]"
+        if tool_definitions:
+            tool_list = json.dumps(tool_definitions, indent=2)
+        prompt = TEXT_AGENT_SYSTEM_PROMPT.format(tool_list=tool_list)
+        if skills_content:
+            prompt += f"\n\n=== CUSTOM SKILLS ===\n{skills_content}\n"
+        return prompt + f"\n\n{env_info}"
+        
     if not vision_mode:
-        return CHAT_ASSISTANT_SYSTEM_PROMPT
+        prompt = CHAT_ASSISTANT_SYSTEM_PROMPT
+        if skills_content:
+            prompt += f"\n\n=== CUSTOM SKILLS ===\n{skills_content}\n"
+        return prompt + f"\n\n{env_info}"
 
     if components:
         lines = []
@@ -180,5 +260,4 @@ def build_system_prompt(
     if skills_content:
         prompt += f"\n\n=== CUSTOM SKILLS ===\n{skills_content}\n"
 
-    return prompt
-
+    return prompt + f"\n\n{env_info}"

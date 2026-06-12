@@ -8,6 +8,9 @@ import logging
 from vda.core.tool_registry.base_tool import BaseTool
 from vda.core.tool_registry.registry import register_tool
 
+import os
+from vda.core.tool_executor._shell_ops import execute_shell
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,13 +37,17 @@ class TerminalTool(BaseTool):
     }
 
     async def execute(self, **kwargs) -> str:
-        """Execute tool. Full implementation deferred to Phase 4.
+        """Execute tool.
 
         Args:
-            **kwargs: Must include ``command``, optionally ``shell``.
+            **kwargs: Must include ``command``.
 
         Returns:
-            Error message indicating tool not yet implemented.
+            Command output or error message.
         """
-        logger.warning("[%s] Stub called with args: %s", self.name, kwargs)
-        return f"Error: {self.name} not implemented yet (Phase 4)"
+        command = kwargs.get("command")
+        if not command:
+            return "Error: No command specified"
+        workspace_dir = os.getcwd()
+        logger.info("[%s] Executing command: %s", self.name, command)
+        return execute_shell(command, workspace_dir)

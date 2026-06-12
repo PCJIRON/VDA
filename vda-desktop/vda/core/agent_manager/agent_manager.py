@@ -95,12 +95,14 @@ class AgentManager:
         screenshot_fn: Optional[ScreenshotFn] = None,
         vision_executor: Optional[Any] = None,
         components: Optional[list[dict[str, Any]]] = None,
+        vision_mode: bool = True,
     ) -> None:
         self.api_client = api_client
         self.tool_registry = tool_registry
         self.settings = settings
         self.max_iterations = max_iterations
         self.screenshot_fn = screenshot_fn
+        self.vision_mode = vision_mode
         # vision_executor (EnhancedExecutor) executes vision actions
         # directly (click/type/scroll) — bypasses the tool registry which
         # only knows about generic tool names like 'uied'.
@@ -324,16 +326,16 @@ class AgentManager:
         return self.state, {"event": "init_complete", "input": self._user_input}
 
     async def _handle_plan(self) -> tuple[AgentState, Optional[dict[str, Any]]]:
-        """Handle PLAN state: take screenshot, ask LLM for next action.
+        """Handle PLAN state: take screenshot (if vision_mode), ask LLM for next action.
 
         This is the heart of the re-plan-per-step design. Each call:
         1. Increments the iteration counter
-        2. Captures a fresh screenshot (if screenshot_fn is provided)
-        3. Builds a vision-mode prompt: task + history + screenshot
+        2. Captures a fresh screenshot (if screenshot_fn is provided and vision_mode is True)
+        3. Builds a system prompt (vision vs text-agent)
         4. Sends ONE LLM call
         5. Parses the response:
            - {done: true, summary: ...} → transition to COMPLETE
-           - {action, target, ...} → set plan = [single action], go to EXECUTE
+           - {action, target, ...} (vision) or {tool, args, ...} (text) → set plan = [single action], go to EXECUTE
            - parse failure → safe fallback action (return description only)
         """
         if self.iteration_count >= self.max_iterations:
@@ -348,9 +350,9 @@ class AgentManager:
         # providers with strict RPM limits (e.g. NVIDIA NIM).
         await self._apply_rate_limit_delay()
 
-        # 1. Capture screenshot
+        # 1. Capture screenshot (only in vision mode)
         screenshot_b64 = None
-        if self.screenshot_fn is not None:
+        if self.vision_mode and self.screenshot_fn is not None:
             try:
                 screenshot_b64 = self.screenshot_fn()
             except Exception as e:
@@ -358,11 +360,7 @@ class AgentManager:
 
         # 2. Build the per-turn LLM message
         history_block = self._format_step_history()
-        try:
-            sw, sh = self._get_screen_size()
-        except Exception:
-            sw, sh = 1920, 1080
-
+        
         skills_content = ""
         if hasattr(self, "settings") and self.settings:
             skills_path = self.settings.get("skills_md_path")
@@ -373,28 +371,48 @@ class AgentManager:
                 except Exception as e:
                     logger.warning(f"Failed to read skills file: {e}")
 
-        system_prompt = build_system_prompt(
-            screen_width=sw,
-            screen_height=sh,
-            components=self.components,
-            vision_mode=True,
-            skills_content=skills_content,
-        )
+        if self.vision_mode:
+            try:
+                sw, sh = self._get_screen_size()
+            except Exception:
+                sw, sh = 1920, 1080
 
-        user_text = self._build_user_prompt(history_block)
+            system_prompt = build_system_prompt(
+                screen_width=sw,
+                screen_height=sh,
+                components=self.components,
+                vision_mode=True,
+                skills_content=skills_content,
+            )
 
-        if screenshot_b64:
-            user_content = [
-                {"type": "text", "text": user_text},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{screenshot_b64}",
+            user_text = self._build_user_prompt(history_block)
+
+            if screenshot_b64:
+                user_content = [
+                    {"type": "text", "text": user_text},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{screenshot_b64}",
+                        },
                     },
-                },
-            ]
+                ]
+            else:
+                user_content = user_text
         else:
-            user_content = user_text
+            # Normal Mode: no screenshots, use text prompt
+            tool_defs = self.tool_registry.get_definitions(agent_type="main")
+            system_prompt = build_system_prompt(
+                vision_mode=False,
+                skills_content=skills_content,
+                text_agent=True,
+                tool_definitions=tool_defs,
+            )
+            user_content = (
+                f"USER TASK: {self._user_input}\n\n"
+                f"STEPS COMPLETED SO FAR:\n{history_block}\n\n"
+                "Decide the NEXT single action by calling a tool, or reply done: true if complete."
+            )
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -443,20 +461,28 @@ class AgentManager:
             }
 
         # 5b. Next action → wrap in a single-step plan
-        # tool="vision" routes the step to the EnhancedExecutor (via the
-        # worker) instead of the generic tool registry. This is what
-        # makes click/type/scroll actually do something on the desktop.
+        # If in normal mode, the action has {"tool": "tool_name", "args": {...}, "description": "..."}
+        if self.vision_mode:
+            tool_name = "vision"
+            step_desc = action.get("description", "next action")
+            args = action
+        else:
+            tool_name = action.get("tool", "")
+            step_desc = action.get("description", "next action")
+            args = action.get("args", {})
+
         self.plan = [{
-            "step": action.get("description", "next action"),
-            "tool": "vision",
-            "args": action,
+            "step": step_desc,
+            "tool": tool_name,
+            "args": args,
         }]
         self.current_step = 0
         self.state = AgentState.EXECUTE
         logger.info(
-            "[AgentManager] Plan step %d: %s",
+            "[AgentManager] Plan step %d: %s (tool: %s)",
             self.iteration_count,
-            action.get("action", "?"),
+            step_desc,
+            tool_name,
         )
         return self.state, {
             "event": "plan_created",
@@ -540,9 +566,10 @@ class AgentManager:
             result: The execution result text.
             success: True if the tool ran without raising.
         """
+        action_name = step.get("args", {}).get("action", "?") if self.vision_mode else step.get("tool", "?")
         self.completed_steps.append({
             "step": step.get("step", "?"),
-            "action": step.get("args", {}).get("action", "?"),
+            "action": action_name,
             "target_name": step.get("args", {}).get("target_name"),
             "x": step.get("args", {}).get("x"),
             "y": step.get("args", {}).get("y"),
@@ -550,7 +577,7 @@ class AgentManager:
             "success": success,
         })
         # Keep only the most recent N steps in history to bound token usage
-        max_history = 15
+        max_history = 15 if self.vision_mode else 8
         if len(self.completed_steps) > max_history:
             self.completed_steps = self.completed_steps[-max_history:]
         # Advance step pointer so the state machine progresses

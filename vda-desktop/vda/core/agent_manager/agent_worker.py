@@ -55,6 +55,7 @@ class AgentWorker(QThread):
 
     # Permission (for ASK decisions)
     permission_required = pyqtSignal(str, str, str)  # (tool_name, args, agent_type)
+    tool_executed = pyqtSignal(str, dict, str, bool)  # (tool_name, args, result, success)
 
     # Compaction
     compaction_needed = pyqtSignal(int, int)     # (current_tokens, max_tokens)
@@ -233,6 +234,54 @@ class AgentWorker(QThread):
         error_str = None
         success = False
         try:
+            if tool_name != "vision" and tool_name:
+                from vda.core.agent_manager.permission_system import PermissionDecision
+                agent_type = getattr(self._agent_manager, "agent_type", "main")
+                decision = self._agent_manager.permission_system.check_permission(
+                    tool_name, agent_type, args
+                )
+                if decision == PermissionDecision.DENY:
+                    result_str = f"Permission denied for tool '{tool_name}'"
+                    logger.warning("[AgentWorker] Permission denied for tool '%s'", tool_name)
+                    self._agent_manager.results.append({
+                        "step": step,
+                        "tool": tool_name,
+                        "error": result_str,
+                        "index": output.get("index", 0),
+                    })
+                    self._agent_manager.record_step_outcome(step, result_str, False)
+                    self.step_failed.emit(step_label, result_str)
+                    self.tool_executed.emit(tool_name, args, result_str, False)
+                    return
+                elif decision == PermissionDecision.ASK:
+                    self.permission_required.emit(tool_name, json.dumps(args), agent_type)
+                    self._agent_manager.pause(f"Permission required for: {tool_name}")
+                    self._paused = True
+                    
+                    # Wait for user input
+                    while self._paused and self._agent_manager.state == AgentState.PAUSED:
+                        await asyncio.sleep(0.1)
+                        
+                    if self._agent_manager.state in (AgentState.COMPLETE, AgentState.ERROR):
+                        return
+                        
+                    # Recheck decision
+                    new_decision = self._agent_manager.permission_system.check_permission(
+                        tool_name, agent_type, args
+                    )
+                    if new_decision != PermissionDecision.ALLOW:
+                        result_str = f"Permission denied by user for tool '{tool_name}'"
+                        self._agent_manager.results.append({
+                            "step": step,
+                            "tool": tool_name,
+                            "error": result_str,
+                            "index": output.get("index", 0),
+                        })
+                        self._agent_manager.record_step_outcome(step, result_str, False)
+                        self.step_failed.emit(step_label, result_str)
+                        self.tool_executed.emit(tool_name, args, result_str, False)
+                        return
+
             if tool_name == "vision":
                 # Direct vision action execution (click, type, scroll, etc.)
                 vision_executor = self._agent_manager.vision_executor
@@ -260,15 +309,21 @@ class AgentWorker(QThread):
             elif tool_name:
                 tool = self._agent_manager.tool_registry.get_tool(tool_name)
                 if tool:
-                    raw_result = tool.execute(args)
+                    # Inject api_client if the tool needs it (e.g. AgentTool)
+                    if hasattr(tool, "api_client"):
+                        tool.api_client = getattr(self._agent_manager, "api_client", None)
+                        
+                    raw_result = await tool.execute(**args)
                     result_str = (
                         json.dumps(raw_result)[:500]
                         if isinstance(raw_result, dict)
                         else str(raw_result)[:500]
                     )
                     success = True
+                    self.tool_executed.emit(tool_name, args, result_str, True)
                 else:
                     result_str = f"Tool '{tool_name}' not found"
+                    self.tool_executed.emit(tool_name, args, result_str, False)
                     logger.warning(
                         "[AgentWorker] Tool '%s' not in registry", tool_name
                     )
@@ -320,6 +375,7 @@ class AgentWorker(QThread):
             # Record the failed step in history (also advances current_step)
             self._agent_manager.record_step_outcome(step, error_str, False)
             self.step_failed.emit(step_label, error_str)
+            self.tool_executed.emit(tool_name, args, error_str, False)
 
         # Check compaction after each step
         await self._check_compaction()
@@ -383,10 +439,23 @@ class AgentWorker(QThread):
         decision = (
             PermissionDecision.ALLOW if allowed else PermissionDecision.DENY
         )
+        
+        # Retrieve active step arguments to cache correctly
+        args = {}
+        plan = self._agent_manager.plan
+        curr = self._agent_manager.current_step
+        if curr < len(plan):
+            args = plan[curr].get("args", {})
+
+        agent_type = getattr(self._agent_manager, "agent_type", "main")
         self._agent_manager.permission_system.cache_decision(
-            tool_name, "main", {}, decision
+            tool_name, agent_type, args, decision
         )
         logger.info(
-            "[AgentWorker] Permission response for '%s': %s",
-            tool_name, decision.value,
+            "[AgentWorker] Permission response for '%s' (args: %s): %s",
+            tool_name, args, decision.value,
         )
+        
+        # Resume the agent execution
+        self._agent_manager.resume()
+        self._paused = False

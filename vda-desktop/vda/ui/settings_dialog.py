@@ -260,6 +260,20 @@ class SettingsDialog(QDialog):
         base_url_lay.addWidget(self.base_url_input, 1)
         form_layout.addRow("", self.base_url_container)
 
+        # Permission Mode Row
+        perm_lbl = QLabel("Permission Mode")
+        perm_lbl.setStyleSheet("font-size: 13px; font-weight: 500; color: #e5e5e5;")
+        self.permission_combo = QComboBox()
+        self.permission_combo.addItem("YOLO (Auto-Allow)", "yolo")
+        self.permission_combo.addItem("Ask (Prompt for approval)", "ask")
+        current_mode = self._settings.get("permission_mode", "yolo")
+        idx = self.permission_combo.findData(current_mode)
+        if idx >= 0:
+            self.permission_combo.setCurrentIndex(idx)
+        else:
+            self.permission_combo.setCurrentIndex(0)
+        form_layout.addRow(perm_lbl, self.permission_combo)
+
         page_ai_layout.addWidget(form_widget)
 
         # Connection testing row
@@ -501,6 +515,9 @@ class SettingsDialog(QDialog):
 
         mcp_url = self.mcp_url_input.text().strip()
         self._settings.set("mcp_server_url", mcp_url)
+
+        permission_mode = self.permission_combo.currentData()
+        self._settings.set("permission_mode", permission_mode)
 
         self._config.save(provider_id, api_key, model, base_url)
         QMessageBox.information(self, "Saved", f"Settings saved for {self._config.get_provider_name()}!")

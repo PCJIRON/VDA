@@ -298,14 +298,20 @@ def test_record_step_outcome_advances_current_step(mock_registry):
 
 
 def test_completed_steps_capped_at_max_history(mock_registry):
-    manager = AgentManager(api_client=MagicMock(), tool_registry=mock_registry)
+    # Test vision mode cap (15)
+    manager = AgentManager(api_client=MagicMock(), tool_registry=mock_registry, vision_mode=True)
     step = {"step": "x", "args": {"action": "click"}}
     for i in range(20):
         manager.record_step_outcome(step, f"step {i}", True)
-    # The implementation caps at 8 most recent steps
-    assert len(manager.completed_steps) <= 8
-    # And the most recent step is preserved
+    assert len(manager.completed_steps) == 15
     assert "step 19" in manager.completed_steps[-1]["result"]
+
+    # Test normal mode cap (8)
+    manager_text = AgentManager(api_client=MagicMock(), tool_registry=mock_registry, vision_mode=False)
+    for i in range(20):
+        manager_text.record_step_outcome(step, f"step {i}", True)
+    assert len(manager_text.completed_steps) == 8
+    assert "step 19" in manager_text.completed_steps[-1]["result"]
 
 
 def test_step_history_format_includes_marks_and_results(mock_registry):
@@ -381,10 +387,9 @@ def test_malformed_json_falls_back_to_wait(mock_registry):
     assert manager.plan[0]["args"]["action"] == "wait"
 
 
-def test_conversational_response_treated_as_done(mock_registry):
-    """If LLM returns free-form text (no JSON), treat it as done: true
-    with the text as summary. Prevents infinite re-plan loops when the
-    model is just being conversational instead of action-oriented.
+def test_conversational_response_falls_back_to_wait(mock_registry):
+    """If LLM returns free-form text (no JSON), treat it as a failed parse
+    and fall back to 'wait' action so the agent doesn't crash.
     """
     api = ScriptedAPI(["Hey! What can I help you with?"])
     manager = AgentManager(api_client=api, tool_registry=mock_registry)
@@ -395,8 +400,8 @@ def test_conversational_response_treated_as_done(mock_registry):
         return await manager._handle_plan()
 
     state, output = asyncio.run(run())
-    assert state == AgentState.COMPLETE
-    assert "Hey" in manager.last_summary
+    assert state == AgentState.EXECUTE
+    assert manager.plan[0]["args"]["action"] == "wait"
 
 
 def test_partial_json_extraction_works(mock_registry):

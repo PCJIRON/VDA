@@ -197,3 +197,23 @@ class TestPermissionSystem:
         system = PermissionSystem(settings={"agent_types": {}})
         result = system.check_permission("terminal", agent_type="nonexistent")
         assert result == PermissionDecision.ASK
+
+    def test_permission_mode_yolo_allows_all(self):
+        """When permission_mode is 'yolo', all tool calls are allowed immediately."""
+        system = PermissionSystem(settings={"permission_mode": "yolo"})
+        
+        # Read-only tool should be allowed
+        assert system.check_permission("file_read", agent_type="main") == PermissionDecision.ALLOW
+        
+        # Mutation tool should be allowed
+        assert system.check_permission("terminal", agent_type="main") == PermissionDecision.ALLOW
+        
+        # Unknown tool should be allowed
+        assert system.check_permission("nonexistent_tool", agent_type="main") == PermissionDecision.ALLOW
+
+    def test_permission_mode_ask_respects_rules(self):
+        """When permission_mode is 'ask', standard rules are respected."""
+        system = PermissionSystem(settings={"permission_mode": "ask", "agent_types": TEST_AGENT_TYPES})
+        
+        # Mutation tool should prompt (ASK)
+        assert system.check_permission("terminal", agent_type="main") == PermissionDecision.ASK

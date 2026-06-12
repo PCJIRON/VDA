@@ -8,6 +8,9 @@ import logging
 from vda.core.tool_registry.base_tool import BaseTool
 from vda.core.tool_registry.registry import register_tool
 
+import os
+from vda.core.tool_executor._file_ops import read_file, write_file, search_files
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,16 +32,20 @@ class FileReadTool(BaseTool):
     }
 
     async def execute(self, **kwargs) -> str:
-        """Execute tool. Full implementation deferred to Phase 5.
+        """Execute tool.
 
         Args:
             **kwargs: Must include ``path``.
 
         Returns:
-            Error message indicating tool not yet implemented.
+            File content or error message.
         """
-        logger.warning("[%s] Stub called with args: %s", self.name, kwargs)
-        return f"Error: {self.name} not implemented yet (Phase 5)"
+        path = kwargs.get("path")
+        if not path:
+            return "Error: No path specified"
+        workspace_dir = os.getcwd()
+        logger.info("[%s] Reading file: %s", self.name, path)
+        return read_file(path, workspace_dir)
 
 
 @register_tool("file_write")
@@ -63,16 +70,21 @@ class FileWriteTool(BaseTool):
     }
 
     async def execute(self, **kwargs) -> str:
-        """Execute tool. Full implementation deferred to Phase 5.
+        """Execute tool.
 
         Args:
             **kwargs: Must include ``path`` and ``content``.
 
         Returns:
-            Error message indicating tool not yet implemented.
+            Success message or error message.
         """
-        logger.warning("[%s] Stub called with args: %s", self.name, kwargs)
-        return f"Error: {self.name} not implemented yet (Phase 5)"
+        path = kwargs.get("path")
+        content = kwargs.get("content", "")
+        if not path:
+            return "Error: No path specified"
+        workspace_dir = os.getcwd()
+        logger.info("[%s] Writing to file: %s", self.name, path)
+        return write_file(path, content, workspace_dir)
 
 
 @register_tool("file_glob")
@@ -93,16 +105,20 @@ class FileGlobTool(BaseTool):
     }
 
     async def execute(self, **kwargs) -> str:
-        """Execute tool. Full implementation deferred to Phase 5.
+        """Execute tool.
 
         Args:
             **kwargs: Must include ``pattern``.
 
         Returns:
-            Error message indicating tool not yet implemented.
+            Glob search results.
         """
-        logger.warning("[%s] Stub called with args: %s", self.name, kwargs)
-        return f"Error: {self.name} not implemented yet (Phase 5)"
+        pattern = kwargs.get("pattern")
+        if not pattern:
+            return "Error: No pattern specified"
+        workspace_dir = os.getcwd()
+        logger.info("[%s] Glob searching: %s", self.name, pattern)
+        return search_files(pattern, "glob", workspace_dir)
 
 
 @register_tool("file_grep")
@@ -127,13 +143,24 @@ class FileGrepTool(BaseTool):
     }
 
     async def execute(self, **kwargs) -> str:
-        """Execute tool. Full implementation deferred to Phase 5.
+        """Execute tool.
 
         Args:
             **kwargs: Must include ``pattern`` and ``path``.
 
         Returns:
-            Error message indicating tool not yet implemented.
+            Grep search results.
         """
-        logger.warning("[%s] Stub called with args: %s", self.name, kwargs)
-        return f"Error: {self.name} not implemented yet (Phase 5)"
+        pattern = kwargs.get("pattern")
+        path = kwargs.get("path")
+        if not pattern:
+            return "Error: No pattern specified"
+        if not path:
+            return "Error: No path specified"
+        workspace_dir = os.getcwd()
+        logger.info("[%s] Grep searching: %s in %s", self.name, pattern, path)
+        # Resolve search path relative to workspace if it's not absolute
+        resolved_path = path
+        if not os.path.isabs(path):
+            resolved_path = os.path.join(workspace_dir, path)
+        return search_files(pattern, "grep", resolved_path)

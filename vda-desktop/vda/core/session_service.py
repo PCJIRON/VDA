@@ -2,9 +2,12 @@ import os
 import json
 import uuid
 import hashlib
+import time
 from pathlib import Path
 from datetime import datetime, timezone
 import logging
+
+from vda.core.db import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -19,147 +22,105 @@ class SessionService:
         self.cwd = cwd or os.getcwd()
         self.project_hash = get_project_hash(self.cwd)
         home = Path.home()
-        self.chats_dir = home / ".vda-desktop" / "sessions" / self.project_hash / "chats"
-        self.chats_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Initialized SessionService. Chats dir: {self.chats_dir}")
+        db_dir = home / ".vda-desktop" / "sessions" / self.project_hash
+        db_dir.mkdir(parents=True, exist_ok=True)
+        
+        self.db_path = str(db_dir / "vda.db")
+        self.db = DatabaseManager(self.db_path)
+        logger.info(f"Initialized SessionService with SQLite DB: {self.db_path}")
+
+    def create_session(self, title: str = "New Chat") -> str:
+        session_id = str(uuid.uuid4())
+        now = int(time.time())
+        query = """
+            INSERT INTO sessions (
+                id, parent_session_id, title, updated_at, created_at
+            ) VALUES (?, NULL, ?, ?, ?)
+        """
+        self.db.execute(query, (session_id, title, now, now))
+        return session_id
+
+    def create_task_session(self, tool_call_id: str, parent_session_id: str, title: str) -> str:
+        now = int(time.time())
+        query = """
+            INSERT INTO sessions (
+                id, parent_session_id, title, updated_at, created_at
+            ) VALUES (?, ?, ?, ?, ?)
+        """
+        self.db.execute(query, (tool_call_id, parent_session_id, title, now, now))
+        return tool_call_id
 
     def load_last_session(self) -> tuple[str, list[dict], str]:
-        try:
-            files = list(self.chats_dir.glob("*.jsonl"))
-            if not files:
-                return None, [], None
-            files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-            most_recent_file = files[0]
-            session_id = most_recent_file.stem
-            return self.load_session(session_id)
-        except Exception as e:
-            logger.error(f"Error loading last session: {e}", exc_info=True)
+        row = self.db.fetchone("SELECT id FROM sessions WHERE parent_session_id IS NULL ORDER BY updated_at DESC LIMIT 1")
+        if not row:
             return None, [], None
+        return self.load_session(row["id"])
 
     def get_all_sessions(self) -> list[dict]:
+        rows = self.db.fetchall("SELECT * FROM sessions WHERE parent_session_id IS NULL ORDER BY updated_at DESC")
         sessions = []
-        try:
-            files = list(self.chats_dir.glob("*.jsonl"))
-            for f in files:
-                session_id = f.stem
-                title = "New Chat"
-                last_msg_text = "Empty session"
-                timestamp = f.stat().st_mtime
+        for row in rows:
+            # Fetch last message text for preview
+            last_msg_row = self.db.fetchone(
+                "SELECT parts FROM messages WHERE session_id = ? ORDER BY created_at DESC LIMIT 1",
+                (row["id"],)
+            )
+            last_msg_text = "Empty session"
+            if last_msg_row:
                 try:
-                    with open(f, 'r', encoding='utf-8') as file:
-                        lines = [line.strip() for line in file if line.strip()]
-                    if not lines:
-                        continue
-                    for line in lines:
-                        try:
-                            record = json.loads(line)
-                            if record.get('type') == 'user':
-                                parts = record.get('message', {}).get('parts', [])
-                                if parts and 'text' in parts[0]:
-                                    text = parts[0]['text']
-                                    title = text[:20] + "..." if len(text) > 20 else text
-                                    break
-                        except:
-                            pass
-                    try:
-                        last_record = json.loads(lines[-1])
-                        parts = last_record.get('message', {}).get('parts', [])
-                        if parts and 'text' in parts[0]:
-                            full_text = parts[0]['text'].replace('\n', ' ').strip()
-                            last_msg_text = full_text[:22] + "..." if len(full_text) > 22 else full_text
-                    except:
-                        pass
-                except:
+                    parts = json.loads(last_msg_row["parts"])
+                    if parts and "text" in parts[0]:
+                        text = parts[0]["text"].replace("\n", " ").strip()
+                        last_msg_text = text[:22] + "..." if len(text) > 22 else text
+                except Exception:
                     pass
-                sessions.append({
-                    'id': session_id,
-                    'title': title,
-                    'last_msg': last_msg_text,
-                    'timestamp': timestamp,
-                    'date_str': datetime.fromtimestamp(timestamp).strftime("%b %d, %I:%M %p"),
-                })
-            sessions.sort(key=lambda x: x['timestamp'], reverse=True)
-        except Exception as e:
-            logger.error(f"Error reading all sessions: {e}")
+            
+            sessions.append({
+                'id': row["id"],
+                'title': row["title"],
+                'last_msg': last_msg_text,
+                'timestamp': row["updated_at"],
+                'date_str': datetime.fromtimestamp(row["updated_at"]).strftime("%b %d, %I:%M %p"),
+            })
         return sessions
 
     def load_session(self, session_id: str) -> tuple[str, list[dict], str]:
-        file_path = self.chats_dir / f"{session_id}.jsonl"
-        if not file_path.exists():
+        # Check if session exists
+        row = self.db.fetchone("SELECT id FROM sessions WHERE id = ?", (session_id,))
+        if not row:
             return session_id, [], None
 
-        records = []
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    if not line.strip():
-                        continue
-                    try:
-                        records.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        continue
-        except Exception as e:
-            logger.error(f"Error reading session file {file_path}: {e}")
-            return session_id, [], None
-
-        if not records:
-            return session_id, [], None
-
-        records_by_uuid = {}
-        for r in records:
-            records_by_uuid.setdefault(r.get('uuid'), []).append(r)
-
-        merged_records = {}
-        for r_uuid, entries in records_by_uuid.items():
-            entries.sort(key=lambda x: x.get('timestamp', ''))
-            merged_records[r_uuid] = entries[-1]
-
-        if not merged_records:
-            return session_id, [], None
-
-        leaf_uuid = records[-1].get('uuid')
-        current_uuid = leaf_uuid
-
-        uuid_chain = []
-        visited = set()
-
-        while current_uuid and current_uuid not in visited:
-            visited.add(current_uuid)
-            uuid_chain.append(current_uuid)
-            record = merged_records.get(current_uuid)
-            if not record:
-                break
-            current_uuid = record.get('parentUuid')
-
-        uuid_chain.reverse()
-
+        msg_rows = self.db.fetchall("SELECT id, role, parts FROM messages WHERE session_id = ? ORDER BY created_at ASC", (session_id,))
         messages = []
-        for u in uuid_chain:
-            record = merged_records.get(u)
-            if not record:
-                continue
-            msg_data = record.get('message', {})
-            if msg_data:
-                role = "assistant" if record.get('type') == 'assistant' else "user"
-                parts = msg_data.get('parts', [])
-                if parts:
-                    text_parts = [p.get('text', '') for p in parts if 'text' in p]
-                    content = "".join(text_parts)
-                    attachments = [p for p in parts if p.get('type') == 'image_url' or 'image_url' in p]
-                    messages.append({
-                        "role": role,
-                        "content": content,
-                        "attachments": attachments,
-                    })
+        leaf_id = None
+        
+        for msg in msg_rows:
+            leaf_id = msg["id"]
+            role = msg["role"]
+            try:
+                parts = json.loads(msg["parts"])
+                text_parts = [p.get('text', '') for p in parts if 'text' in p]
+                content = "".join(text_parts)
+                attachments = [p for p in parts if p.get('type') == 'image_url' or 'image_url' in p]
+                messages.append({
+                    "role": role,
+                    "content": content,
+                    "attachments": attachments,
+                })
+            except Exception as e:
+                logger.warning(f"Failed to parse message {leaf_id} parts: {e}")
 
-        return session_id, messages, leaf_uuid
+        return session_id, messages, leaf_id
 
     def save_message(self, session_id: str, role: str, text: str, attachments: list = None, parent_uuid: str = None) -> str:
-        file_path = self.chats_dir / f"{session_id}.jsonl"
+        # If session doesn't exist yet, lazily create it
+        if not self.db.fetchone("SELECT id FROM sessions WHERE id = ?", (session_id,)):
+            self.create_session(title=text[:20] + "...")
+            
         msg_uuid = str(uuid.uuid4())
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-        record_type = "assistant" if role == "assistant" else "user"
-        msg_role = "model" if role == "assistant" else "user"
+        now = int(time.time())
+        db_role = "assistant" if role == "assistant" else "user"
+        model_role = "model" if role == "assistant" else "user"
 
         parts = [{"text": text}]
         if attachments:
@@ -172,23 +133,27 @@ class SessionService:
                         "image_url": {"url": f"data:{mime};base64,{b64}"},
                     })
 
-        record = {
-            "uuid": msg_uuid,
-            "parentUuid": parent_uuid or "",
-            "sessionId": session_id,
-            "cwd": self.cwd,
-            "timestamp": timestamp,
-            "type": record_type,
-            "message": {
-                "role": msg_role,
-                "parts": parts,
-            },
-        }
+        query = """
+            INSERT INTO messages (
+                id, session_id, role, parts, model, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """
+        self.db.execute(query, (
+            msg_uuid, 
+            session_id, 
+            db_role, 
+            json.dumps(parts), 
+            "vda-model", # Default model
+            now, 
+            now
+        ))
 
-        try:
-            with open(file_path, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(record, separators=(',', ':')) + '\n')
-        except Exception as e:
-            logger.error(f"Error appending to session file {file_path}: {e}")
+        # Update session timestamp and message count
+        update_query = """
+            UPDATE sessions 
+            SET updated_at = ?, message_count = message_count + 1 
+            WHERE id = ?
+        """
+        self.db.execute(update_query, (now, session_id))
 
         return msg_uuid
