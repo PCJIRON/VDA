@@ -29,8 +29,8 @@ class SessionService:
         self.db = DatabaseManager(self.db_path)
         logger.info(f"Initialized SessionService with SQLite DB: {self.db_path}")
 
-    def create_session(self, title: str = "New Chat") -> str:
-        session_id = str(uuid.uuid4())
+    def create_session(self, title: str = "New Chat", session_id: str = None) -> str:
+        session_id = session_id or str(uuid.uuid4())
         now = int(time.time())
         query = """
             INSERT INTO sessions (
@@ -115,7 +115,7 @@ class SessionService:
     def save_message(self, session_id: str, role: str, text: str, attachments: list = None, parent_uuid: str = None) -> str:
         # If session doesn't exist yet, lazily create it
         if not self.db.fetchone("SELECT id FROM sessions WHERE id = ?", (session_id,)):
-            self.create_session(title=text[:20] + "...")
+            self.create_session(title=text[:20] + "...", session_id=session_id)
             
         msg_uuid = str(uuid.uuid4())
         now = int(time.time())
