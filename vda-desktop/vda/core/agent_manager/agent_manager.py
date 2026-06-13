@@ -19,12 +19,11 @@ mapping states to handlers.
 
 import asyncio
 import enum
-import io
 import json
 import logging
+import os
 import re
 import time
-import os
 from typing import Any, Callable, Optional
 
 from vda.config.defaults import PROVIDERS
@@ -164,6 +163,52 @@ class AgentManager:
         self.permission_system.clear_cache()
         logger.info("[AgentManager] Reset to IDLE")
 
+    async def run_to_completion_async(self) -> str:
+        """Run the agent loop autonomously to completion (for sub-agents).
+
+        Returns:
+            The final summary text if successful, or an error string.
+        """
+        while self.state not in (AgentState.COMPLETE, AgentState.ERROR):
+            if self.state == AgentState.PAUSED:
+                self.state = AgentState.ERROR
+                self._error = f"Sub-agent required user intervention (paused) and aborted: {self._error}"
+                break
+
+            state, event_data = await self.step()
+
+            if event_data and event_data.get("event") == "execute_step":
+                step_dict = event_data.get("step", {})
+                tool_name = step_dict.get("tool")
+                args = step_dict.get("args", {})
+
+                try:
+                    tool = self.tool_registry.get_tool(tool_name)
+                    if not tool:
+                        result = f"Error: Tool '{tool_name}' not found in registry."
+                        success = False
+                    elif not hasattr(tool, "execute"):
+                        result = f"Error: Tool '{tool_name}' has no execute method."
+                        success = False
+                    else:
+                        import inspect
+                        if inspect.iscoroutinefunction(tool.execute):
+                            result = await tool.execute(**args)
+                        else:
+                            result = tool.execute(**args)
+                        result = str(result)
+                        success = True
+                except Exception as e:
+                    result = f"Error executing {tool_name}: {e}"
+                    success = False
+
+                self.record_step_outcome(step_dict, result, success)
+
+        if self.state == AgentState.ERROR:
+            return f"Error: {self._error}"
+
+        return getattr(self, "last_summary", "Task completed without summary")
+
     async def step(self) -> tuple[AgentState, Optional[dict[str, Any]]]:
         """Execute one state transition.
 
@@ -211,8 +256,9 @@ class AgentManager:
 
             # Draw a red circle on the image at (sift_x, sift_y)
             try:
-                import cv2
                 import base64
+
+                import cv2
                 import numpy as np
                 img_data = base64.b64decode(b64_image)
                 nparr = np.frombuffer(img_data, np.uint8)
@@ -360,13 +406,13 @@ class AgentManager:
 
         # 2. Build the per-turn LLM message
         history_block = self._format_step_history()
-        
+
         skills_content = ""
         if hasattr(self, "settings") and self.settings:
             skills_path = self.settings.get("skills_md_path")
             if skills_path and os.path.exists(skills_path):
                 try:
-                    with open(skills_path, "r", encoding="utf-8") as f:
+                    with open(skills_path, encoding="utf-8") as f:
                         skills_content = f.read()
                 except Exception as e:
                     logger.warning(f"Failed to read skills file: {e}")
@@ -602,7 +648,7 @@ class AgentManager:
             target = s.get("target_name") or ""
             x = s.get("x")
             y = s.get("y")
-            
+
             coord_str = f" at ({x},{y})" if x is not None and y is not None else ""
             result = (s.get("result") or "")[:80]
             line = f"{i}. {mark} {action}"
@@ -644,6 +690,9 @@ class AgentManager:
             f"{fail_hint}\n"
             "Decide the NEXT single action, or reply done: true if complete."
         )
+
+    session_service: Optional[Any] = None
+    _session_id: Optional[str] = None
 
     def _get_screen_size(self) -> tuple[int, int]:
         """Return the current screen size in pixels."""

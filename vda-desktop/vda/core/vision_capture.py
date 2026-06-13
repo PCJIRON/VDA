@@ -1,5 +1,4 @@
-"""
-Vision Capture Service.
+"""Vision Capture Service.
 
 Listens for global mouse clicks and keyboard presses via pynput.
 On each interaction, takes a screenshot and emits it as a PyQt signal
@@ -29,7 +28,8 @@ except ImportError:
     logger.warning("pyautogui not installed — vision capture disabled")
 
 try:
-    from pynput import mouse as pynput_mouse, keyboard as pynput_keyboard
+    from pynput import keyboard as pynput_keyboard
+    from pynput import mouse as pynput_mouse
     PYNPUT_OK = True
 except ImportError:
     PYNPUT_OK = False
@@ -44,8 +44,7 @@ except ImportError:
 
 
 class VisionCaptureService(QObject):
-    """
-    Fires screenshot_ready(base64_str, metadata) whenever the user
+    """Fires screenshot_ready(base64_str, metadata) whenever the user
     interacts with the desktop while vision mode is active.
 
     metadata dict keys:

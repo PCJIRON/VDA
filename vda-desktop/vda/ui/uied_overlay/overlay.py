@@ -6,15 +6,24 @@ delete components. It emits signals that the assistant UI consumes.
 """
 
 import logging
-from typing import List, Dict
+from typing import Dict, List
 
-from PyQt6.QtWidgets import (
-    QWidget,
-    QApplication,
-    QGraphicsDropShadowEffect,
+from PyQt6.QtCore import QPoint, QRect, Qt, pyqtSignal
+from PyQt6.QtGui import (
+    QBrush,
+    QColor,
+    QCursor,
+    QFont,
+    QKeyEvent,
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QPen,
 )
-from PyQt6.QtCore import Qt, QRect, QPoint, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QCursor, QKeyEvent, QMouseEvent, QPaintEvent
+from PyQt6.QtWidgets import (
+    QApplication,
+    QWidget,
+)
 
 # Local imports – sibling modules in this package
 from .label_editor import LabelEditorDialog
@@ -361,7 +370,11 @@ class UIEDOverlayWidget(QWidget):
         comp["center_y"] = new_y + comp["height"] // 2
         # Re‑capture template after moving – same logic as original implementation
         try:
-            import cv2, numpy as np, pyautogui as _pag, time
+            import time
+
+            import cv2
+            import numpy as np
+            import pyautogui as _pag
             from PyQt6.QtWidgets import QApplication
             self.hide()
             QApplication.processEvents()
@@ -413,7 +426,11 @@ class UIEDOverlayWidget(QWidget):
         comp["center_y"] = comp["y"] + comp["height"] // 2
         # Re‑capture template after resize (same logic as drag)
         try:
-            import cv2, numpy as np, pyautogui as _pag, time
+            import time
+
+            import cv2
+            import numpy as np
+            import pyautogui as _pag
             from PyQt6.QtWidgets import QApplication
             self.hide()
             QApplication.processEvents()

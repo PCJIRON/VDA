@@ -1,11 +1,11 @@
-"""
-Error handling utilities for VDA Desktop.
+"""Error handling utilities for VDA Desktop.
 
 Provides error classification and user-friendly error messages.
 """
 
 from enum import Enum
 from typing import Optional
+
 import httpx
 
 
@@ -41,7 +41,7 @@ def classify_error(
             return ErrorType.SERVER_ERROR
         elif status_code >= 400:
             return ErrorType.UNKNOWN
-    
+
     if error:
         if isinstance(error, (httpx.ConnectError, httpx.NetworkError)):
             return ErrorType.NETWORK_ERROR
@@ -49,7 +49,7 @@ def classify_error(
             return ErrorType.NETWORK_ERROR
         elif isinstance(error, httpx.RequestError):
             return ErrorType.NETWORK_ERROR
-    
+
     return ErrorType.UNKNOWN
 
 
@@ -85,7 +85,7 @@ def get_user_message(error_type: ErrorType, details: str = "") -> str:
             f"An error occurred: {details}" if details else "An unexpected error occurred."
         ),
     }
-    
+
     return messages.get(error_type, messages[ErrorType.UNKNOWN])
 
 
@@ -106,5 +106,5 @@ def get_suggested_action(error_type: ErrorType) -> str:
         ErrorType.FILE_ERROR: "Check file and try again",
         ErrorType.UNKNOWN: "Try again or restart the app",
     }
-    
+
     return actions.get(error_type, actions[ErrorType.UNKNOWN])

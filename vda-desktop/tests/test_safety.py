@@ -1,6 +1,5 @@
 """Tests for safety utilities — FAILSAFE context manager."""
 
-from unittest.mock import patch
 
 import pyautogui
 

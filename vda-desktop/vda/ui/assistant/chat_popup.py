@@ -8,11 +8,11 @@
 
 import logging
 
-from PyQt6.QtCore import Qt, QTimer, QVariantAnimation, QEasingCurve
+from PyQt6.QtCore import QEasingCurve, Qt, QTimer, QVariantAnimation
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
-    QGraphicsDropShadowEffect,
     QFrame,
+    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -125,7 +125,7 @@ class ChatHistoryPopup(QWidget):
         # === CONTENT ===
         content_w = QWidget()
         content_w.setStyleSheet("background: transparent;")
-        
+
         # Sidebar for sessions
         self.sidebar = QFrame()
         self.sidebar.setFixedWidth(220)
@@ -267,7 +267,7 @@ class ChatHistoryPopup(QWidget):
     def _toggle_sessions(self):
         """Show/hide the session list sidebar with a width transition."""
         self._sessions_visible = not self._sessions_visible
-        
+
         # Stop existing animation if running
         if hasattr(self, '_resize_anim') and self._resize_anim.state() == QVariantAnimation.State.Running:
             self._resize_anim.stop()

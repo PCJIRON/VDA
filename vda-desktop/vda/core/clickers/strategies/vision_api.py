@@ -8,7 +8,7 @@ import logging
 
 import pyautogui
 
-from vda.core.clickers.engine import ClickStrategy, ClickResult
+from vda.core.clickers.engine import ClickResult, ClickStrategy
 
 logger = logging.getLogger(__name__)
 

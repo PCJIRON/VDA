@@ -12,22 +12,20 @@ Per D-04: Doom loop = pause + red badge + Resume/Abort buttons.
 import logging
 
 from PyQt6.QtCore import (
-    Qt,
-    QPropertyAnimation,
     QEasingCurve,
+    QPropertyAnimation,
+    Qt,
     pyqtSignal,
-    QRect,
 )
-from PyQt6.QtGui import QColor, QPainter, QFont
 from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QPushButton,
-    QLabel,
     QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
     QScrollArea,
     QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
 
 logger = logging.getLogger(__name__)

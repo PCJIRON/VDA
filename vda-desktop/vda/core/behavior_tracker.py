@@ -1,8 +1,8 @@
-import json
-import time
-import os
 import hashlib
+import json
 import logging
+import os
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -25,7 +25,7 @@ class BehaviorTracker:
     def _load_session(self):
         path = self._session_path()
         if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if line:
@@ -87,7 +87,7 @@ class BehaviorTracker:
     def get_frequent_task_patterns(self, min_count: int = 2) -> list[dict]:
         task_patterns = {}
         for f in sorted(self._dir.glob("session_*.jsonl")):
-            with open(f, "r", encoding="utf-8") as fh:
+            with open(f, encoding="utf-8") as fh:
                 for line in fh:
                     line = line.strip()
                     if not line:

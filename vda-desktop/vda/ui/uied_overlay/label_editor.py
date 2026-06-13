@@ -5,17 +5,17 @@ type (icon, button, etc.). The dialog emits ``label_saved`` with the new label
 and type when the user clicks Save or presses Enter.
 """
 
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
+    QComboBox,
     QDialog,
-    QVBoxLayout,
     QFrame,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
-    QComboBox,
-    QHBoxLayout,
     QPushButton,
+    QVBoxLayout,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
 
 
 class LabelEditorDialog(QDialog):

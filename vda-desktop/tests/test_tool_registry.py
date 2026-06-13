@@ -10,10 +10,10 @@ from typing import Any, Optional
 import pytest
 
 from vda.core.tool_registry import (
-    ToolRegistry,
     BaseTool,
-    register_tool,
+    ToolRegistry,
     get_registry,
+    register_tool,
 )
 
 

@@ -4,15 +4,14 @@ Extracted from the original monolithic ``PyAutoGUIExecutor``.
 """
 
 import logging
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pyautogui
 
-from .response_parser import parse_response as _parse_response
-from .response_parser import has_commands as _has_commands
 from .response_parser import extract_commands as _extract_commands
+from .response_parser import has_commands as _has_commands
+from .response_parser import parse_response as _parse_response
 from .template_matcher import find_with_template as _find_template
-from .template_matcher import find_with_template
 
 logger = logging.getLogger(__name__)
 

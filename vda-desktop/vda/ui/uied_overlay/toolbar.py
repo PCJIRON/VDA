@@ -5,17 +5,18 @@ current editing tool (move, box, delete) and provides Done/Exit actions.
 """
 
 import os
-from PyQt6.QtWidgets import (
-    QWidget,
-    QHBoxLayout,
-    QFrame,
-    QPushButton,
-    QGraphicsDropShadowEffect,
-    QApplication,
-)
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QSize, QRectF
-from PyQt6.QtGui import QColor, QCursor, QPainter, QBrush, QIcon
+
+from PyQt6.QtCore import QPoint, QRectF, Qt, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor, QIcon, QPainter
 from PyQt6.QtSvg import QSvgRenderer
+from PyQt6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QGraphicsDropShadowEffect,
+    QHBoxLayout,
+    QPushButton,
+    QWidget,
+)
 
 
 class ToolButton(QPushButton):

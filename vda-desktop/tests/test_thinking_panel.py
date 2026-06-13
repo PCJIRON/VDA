@@ -1,8 +1,7 @@
 """Tests for ThinkingPanel widget — step display, animations, doom loop UI, and permissions."""
 
 import pytest
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QPushButton, QLabel
+from PyQt6.QtWidgets import QApplication
 
 
 @pytest.fixture(scope="module")

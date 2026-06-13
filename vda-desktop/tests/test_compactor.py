@@ -5,9 +5,7 @@ compaction output format, last user message preservation, reset behavior,
 and prompt format validation.
 """
 
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
+from unittest.mock import MagicMock
 
 from vda.core.agent_manager import SessionCompactor
 from vda.core.agent_manager.session_compactor import (

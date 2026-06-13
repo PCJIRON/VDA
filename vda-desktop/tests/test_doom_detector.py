@@ -4,10 +4,7 @@ Covers loop detection, false positive prevention for polling,
 partial window behavior, history clearing, and window maxlen.
 """
 
-import hashlib
-import json
 
-import pytest
 
 from vda.core.agent_manager.doom_detector import (
     DoomLoopDetector,

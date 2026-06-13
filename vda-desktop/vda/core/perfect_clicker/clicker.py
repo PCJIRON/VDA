@@ -4,20 +4,21 @@ Combines self-calibration, multi-scale VDA ensemble, visual centroid,
 sub-pixel refinement, universal coordinate conversion, and pixel verification.
 """
 
+import base64
 import io
 import json
-import time
-import base64
 import logging
-from typing import Tuple, Optional, List, Dict, Any
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
+import pyautogui
 import requests
 from PIL import Image
-import pyautogui
 
 from vda.utils.screen import ScreenDetector
+
 from .calibrator import SelfCalibrator
 
 logger = logging.getLogger(__name__)

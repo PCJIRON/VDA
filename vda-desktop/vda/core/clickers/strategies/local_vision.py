@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import pyautogui
 
-from vda.core.clickers.engine import ClickStrategy, ClickResult
+from vda.core.clickers.engine import ClickResult, ClickStrategy
 
 logger = logging.getLogger(__name__)
 

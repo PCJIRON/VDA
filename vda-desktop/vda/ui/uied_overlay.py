@@ -6,4 +6,3 @@ public classes so existing import statements (e.g. ``from ...ui.uied_overlay
 import UIEDOverlayWidget``) remain valid.
 """
 
-from .uied_overlay import UIEDOverlayWidget, DraggableToolbar, LabelEditorDialog

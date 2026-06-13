@@ -1,10 +1,10 @@
+import logging
 import os
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
-import tempfile
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ class PersistentShell:
 
         uid = str(uuid.uuid4())
         tmp_dir = tempfile.gettempdir()
-        
+
         stdout_file = os.path.join(tmp_dir, f"vda-stdout-{uid}.txt")
         stderr_file = os.path.join(tmp_dir, f"vda-stderr-{uid}.txt")
         status_file = os.path.join(tmp_dir, f"vda-status-{uid}.txt")
@@ -70,7 +70,7 @@ class PersistentShell:
                 cmd_file = os.path.join(tmp_dir, f"vda-cmd-{uid}.ps1")
                 with open(cmd_file, "w", encoding="utf-8") as f:
                     f.write(command)
-                
+
                 # Use dot-sourcing to run in the current scope
                 script = f"""
 . "{cmd_file}" > "{stdout_file}" 2> "{stderr_file}"
@@ -83,7 +83,7 @@ $exitCode > "{status_file}"
                 cmd_file = os.path.join(tmp_dir, f"vda-cmd-{uid}.sh")
                 with open(cmd_file, "w", encoding="utf-8") as f:
                     f.write(command)
-                
+
                 script = f"""
 source "{cmd_file}" > "{stdout_file}" 2> "{stderr_file}"
 EXEC_EXIT_CODE=$?
@@ -112,10 +112,10 @@ echo $EXEC_EXIT_CODE > "{status_file}"
             def read_file(path):
                 if os.path.exists(path):
                     try:
-                        with open(path, "r", encoding="utf-8") as f:
+                        with open(path, encoding="utf-8") as f:
                             return f.read().strip()
                     except UnicodeError:
-                        with open(path, "r", encoding="utf-16") as f:
+                        with open(path, encoding="utf-16") as f:
                             return f.read().strip()
                 return ""
 

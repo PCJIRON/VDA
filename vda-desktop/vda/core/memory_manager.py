@@ -1,9 +1,9 @@
 import json
-import time
-import os
 import logging
+import os
+import time
+from collections import defaultdict
 from pathlib import Path
-from collections import OrderedDict, defaultdict
 from typing import Optional
 
 logger = logging.getLogger(__name__)

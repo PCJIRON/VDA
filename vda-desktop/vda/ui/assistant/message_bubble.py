@@ -36,11 +36,12 @@ class MessageBubble(QWidget):
         avatar = QLabel("")
         avatar.setFixedSize(28, 28)
         avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
+
         import os
+
         from PyQt6.QtGui import QPainter
         from PyQt6.QtSvg import QSvgRenderer
-        
+
         if sender == "user":
             svg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources", "icons", "user.svg"))
             avatar.setStyleSheet(
@@ -63,7 +64,7 @@ class MessageBubble(QWidget):
         else:
             avatar.setText("\U0001F464" if sender == "user" else "★")
             avatar.setStyleSheet("color: white; font-size: 14px;" + ("background-color: #2563eb; border-radius: 14px;" if sender == "user" else "background-color: #262626; border-radius: 14px;"))
-            
+
         avatar.setMaximumSize(28, 28)
 
         self.frame = QFrame()

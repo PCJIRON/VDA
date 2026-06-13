@@ -3,8 +3,8 @@
 Extracted from the original monolithic ``PyAutoGUIExecutor``.
 """
 
-import os
 import logging
+import os
 from typing import Optional, Tuple
 
 import cv2

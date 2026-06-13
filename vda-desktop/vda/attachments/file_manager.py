@@ -1,5 +1,4 @@
-"""
-File attachment management.
+"""File attachment management.
 
 Handles file validation, preview, and management for attachments.
 """
@@ -22,13 +21,13 @@ class Attachment:
     def __post_init__(self) -> None:
         """Initialize attachment properties."""
         path = Path(self.file_path)
-        
+
         if not self.name:
             self.name = path.name
-        
+
         if not self.size and path.exists():
             self.size = path.stat().st_size
-        
+
         if not self.file_type:
             self.file_type = path.suffix.lower()
 
@@ -111,25 +110,25 @@ class FileManager:
             Tuple of (is_valid, error_message).
         """
         path = Path(file_path)
-        
+
         # Check if file exists
         if not path.exists():
             return False, "File does not exist"
-        
+
         # Check if it's a file
         if not path.is_file():
             return False, "Not a file"
-        
+
         # Check extension
         ext = path.suffix.lower()
         if self.allowed_extensions and ext not in self.allowed_extensions:
             return False, f"File type '{ext}' is not allowed"
-        
+
         # Check file size
         size_mb = path.stat().st_size / (1024 * 1024)
         if size_mb > self.max_file_size_mb:
             return False, f"File size ({size_mb:.1f}MB) exceeds limit ({self.max_file_size_mb}MB)"
-        
+
         return True, ""
 
     def read_file_content(self, file_path: str) -> str:
@@ -142,7 +141,7 @@ class FileManager:
             File content as string.
         """
         path = Path(file_path)
-        
+
         # Try UTF-8 first
         try:
             return path.read_text(encoding="utf-8")
@@ -166,5 +165,5 @@ class FileManager:
                 return content[:500] + "..." if len(content) > 500 else content
             except Exception:
                 return None
-        
+
         return None

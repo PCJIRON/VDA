@@ -1,11 +1,11 @@
-import os
-import json
-import uuid
 import hashlib
-import time
-from pathlib import Path
-from datetime import datetime, timezone
+import json
 import logging
+import os
+import time
+import uuid
+from datetime import datetime
+from pathlib import Path
 
 from vda.core.db import DatabaseManager
 
@@ -24,7 +24,7 @@ class SessionService:
         home = Path.home()
         db_dir = home / ".vda-desktop" / "sessions" / self.project_hash
         db_dir.mkdir(parents=True, exist_ok=True)
-        
+
         self.db_path = str(db_dir / "vda.db")
         self.db = DatabaseManager(self.db_path)
         logger.info(f"Initialized SessionService with SQLite DB: {self.db_path}")
@@ -74,7 +74,7 @@ class SessionService:
                         last_msg_text = text[:22] + "..." if len(text) > 22 else text
                 except Exception:
                     pass
-            
+
             sessions.append({
                 'id': row["id"],
                 'title': row["title"],
@@ -93,7 +93,7 @@ class SessionService:
         msg_rows = self.db.fetchall("SELECT id, role, parts FROM messages WHERE session_id = ? ORDER BY created_at ASC", (session_id,))
         messages = []
         leaf_id = None
-        
+
         for msg in msg_rows:
             leaf_id = msg["id"]
             role = msg["role"]
@@ -116,7 +116,7 @@ class SessionService:
         # If session doesn't exist yet, lazily create it
         if not self.db.fetchone("SELECT id FROM sessions WHERE id = ?", (session_id,)):
             self.create_session(title=text[:20] + "...", session_id=session_id)
-            
+
         msg_uuid = str(uuid.uuid4())
         now = int(time.time())
         db_role = "assistant" if role == "assistant" else "user"
@@ -139,12 +139,12 @@ class SessionService:
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
         """
         self.db.execute(query, (
-            msg_uuid, 
-            session_id, 
-            db_role, 
-            json.dumps(parts), 
+            msg_uuid,
+            session_id,
+            db_role,
+            json.dumps(parts),
             "vda-model", # Default model
-            now, 
+            now,
             now
         ))
 

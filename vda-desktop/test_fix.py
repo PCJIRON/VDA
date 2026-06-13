@@ -1,11 +1,11 @@
-"""
-Quick Test - Perfect Clicker with Fixes
+"""Quick Test - Perfect Clicker with Fixes
 
 Test karo aur dekho ki click accurate jagah pe ho raha hai ya nahi
 """
 
-from vda.core.perfect_clicker import PerfectClicker
 import logging
+
+from vda.core.perfect_clicker import PerfectClicker
 
 # Enable debug logging
 logging.basicConfig(level=logging.DEBUG, format='%(message)s')

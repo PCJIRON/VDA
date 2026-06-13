@@ -4,9 +4,9 @@ Extracted from the original monolithic ``PyAutoGUIExecutor``.
 """
 
 import json
-import re
 import logging
-from typing import Optional, Dict, Any, List
+import re
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 

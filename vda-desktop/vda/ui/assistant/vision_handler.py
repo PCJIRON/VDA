@@ -71,9 +71,10 @@ class VisionHandlerMixin:
 
         self._last_screen_resolution = (sw, sh)
 
-        from PIL import Image
-        import io
         import base64
+        import io
+
+        from PIL import Image
         screenshot_img = Image.open(io.BytesIO(base64.b64decode(b64)))
         self._last_screenshot_size = (screenshot_img.width, screenshot_img.height)
         logger.info(f"Screenshot size: {screenshot_img.width}x{screenshot_img.height}, Screen resolution: {sw}x{sh}")
@@ -146,9 +147,9 @@ class VisionHandlerMixin:
         if target_name and target_name in self._template_cache:
             logger.info(f"[OPENCV] Priority 2: Template found for '{target_name}'. Fast matching...")
             try:
-                import pyautogui
                 import cv2
                 import numpy as np
+                import pyautogui
                 screen = np.array(pyautogui.screenshot())
                 screen_bgr = cv2.cvtColor(screen, cv2.COLOR_RGB2BGR)
                 screen_gray = cv2.cvtColor(screen_bgr, cv2.COLOR_BGR2GRAY)
@@ -199,10 +200,11 @@ class VisionHandlerMixin:
                 logger.info(f"Screen (before refine): [{real_x}, {real_y}] ({screen_w}x{screen_h})")
 
                 try:
-                    import pyautogui
                     import os
+
                     import cv2
                     import numpy as np
+                    import pyautogui
                     fresh_ss = np.array(pyautogui.screenshot())
                     fresh_bgr = cv2.cvtColor(fresh_ss, cv2.COLOR_RGB2BGR)
                     fresh_gray = cv2.cvtColor(fresh_bgr, cv2.COLOR_BGR2GRAY)
@@ -273,9 +275,9 @@ class VisionHandlerMixin:
                                ss_x: int, ss_y: int,
                                screenshot_w: int, screenshot_h: int) -> Tuple[Optional[int], Optional[int]]:
         try:
-            import pyautogui
             import cv2
             import numpy as np
+            import pyautogui
 
             fresh_ss = pyautogui.screenshot()
             fresh_np = np.array(fresh_ss)

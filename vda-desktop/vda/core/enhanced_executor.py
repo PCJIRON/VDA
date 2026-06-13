@@ -131,7 +131,7 @@ class EnhancedExecutor:
 
         action = data.get("action", "click")
         target = data.get("target") or data.get("target_normalized") or data.get("coordinates")
-        
+
         if not target or len(target) < 2:
             if action in ["type", "wait"]:
                 return {
@@ -300,7 +300,7 @@ class EnhancedExecutor:
             screenshot = pyautogui.screenshot()
             screen_np = np.array(screenshot)
             screen_gray = cv2.cvtColor(screen_np, cv2.COLOR_RGB2GRAY)
-            
+
             # Step 1: Standard template matching
             result = cv2.matchTemplate(screen_gray, template, cv2.TM_CCOEFF_NORMED)
             _, max_val, _, max_loc = cv2.minMaxLoc(result)
@@ -309,37 +309,37 @@ class EnhancedExecutor:
                 cx = max_loc[0] + w // 2
                 cy = max_loc[1] + h // 2
                 return (cx, cy, False)
-                
+
             # Step 2: SIFT Fallback
             logger.info(f"[EnhancedExecutor] Standard matching failed (val={max_val:.2f}), attempting SIFT fallback.")
             sift = cv2.SIFT_create()
             kp1, des1 = sift.detectAndCompute(template, None)
             kp2, des2 = sift.detectAndCompute(screen_gray, None)
-            
+
             if des1 is None or len(des1) < 4:
                 return None
-                
+
             bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
             matches = bf.knnMatch(des1, des2, k=2)
-            
+
             good_matches = []
             for m, n in matches:
                 if m.distance < 0.75 * n.distance:
                     good_matches.append(m)
-                    
+
             if len(good_matches) >= 4:
                 src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
                 dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-                
+
                 M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
                 if M is not None:
                     h, w = template.shape
                     pts = np.float32([[0, 0], [0, h-1], [w-1, h-1], [w-1, 0]]).reshape(-1, 1, 2)
                     dst = cv2.perspectiveTransform(pts, M)
-                    
+
                     cx = int(np.mean(dst[:, 0, 0]))
                     cy = int(np.mean(dst[:, 0, 1]))
-                    
+
                     if 0 <= cx <= screen_gray.shape[1] and 0 <= cy <= screen_gray.shape[0]:
                         if llm_x != 0 and llm_y != 0:
                             dist = ((cx - llm_x) ** 2 + (cy - llm_y) ** 2) ** 0.5
@@ -355,37 +355,37 @@ class EnhancedExecutor:
     def find_with_ocr(self, target_text: str, llm_x: int = 0, llm_y: int = 0):
         """Use RapidOCR to find exact screen coordinates of text."""
         try:
-            from rapidocr_onnxruntime import RapidOCR
             import numpy as np
             import pyautogui
-            
+            from rapidocr_onnxruntime import RapidOCR
+
             ocr = RapidOCR()
             screenshot = pyautogui.screenshot()
             result, _ = ocr(np.array(screenshot))
-            
+
             if not result:
                 return None
-                
+
             best_match = None
             best_dist = float('inf')
             target_lower = target_text.lower().strip()
-            
+
             for box, text, score in result:
                 # box is [ [x1,y1], [x2,y1], [x2,y2], [x1,y2] ]
                 if target_lower in text.lower() or text.lower() in target_lower:
                     pts = np.array(box, np.int32)
                     cx = int(np.mean(pts[:, 0]))
                     cy = int(np.mean(pts[:, 1]))
-                    
+
                     if llm_x and llm_y:
                         dist = ((cx - llm_x)**2 + (cy - llm_y)**2)**0.5
                     else:
                         dist = 0
-                        
+
                     if dist < best_dist:
                         best_dist = dist
                         best_match = (cx, cy)
-                        
+
             return best_match
         except ImportError:
             logger.error("[EnhancedExecutor] rapidocr-onnxruntime not installed.")

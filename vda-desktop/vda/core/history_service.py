@@ -1,12 +1,11 @@
 """History Service for tracking file versions and loading project memory."""
 
+import hashlib
+import logging
 import os
 import time
 import uuid
-import logging
-from typing import Optional
 from pathlib import Path
-import hashlib
 
 from vda.core.db import DatabaseManager
 
@@ -30,7 +29,7 @@ class HistoryService:
         """Create a new version of a file in the history tracking."""
         # Find latest version
         rows = self.db.fetchall("SELECT version, created_at FROM files WHERE path = ? ORDER BY created_at DESC", (path,))
-        
+
         if not rows:
             next_version = INITIAL_VERSION
         else:
@@ -55,7 +54,7 @@ class HistoryService:
         """
         self.db.execute(query, (file_id, session_id, path, content, next_version, now, now))
         logger.info(f"Created file history version {next_version} for {path}")
-        
+
         return {
             "id": file_id,
             "session_id": session_id,
@@ -85,7 +84,7 @@ class HistoryService:
             file_path = os.path.join(self.cwd, cf)
             if os.path.exists(file_path):
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
+                    with open(file_path, encoding="utf-8") as f:
                         return f"# From:{file_path}\n{f.read()}"
                 except Exception as e:
                     logger.error(f"Failed to read project memory {file_path}: {e}")

@@ -1,52 +1,63 @@
 """Floating assistant controller — main application window with chat, vision, and UIED functionality."""
 
 import base64
-import datetime
 import io
 import logging
-import re
-import uuid
 import os
+import uuid
+from typing import Optional, Tuple
 
-from PyQt6.QtCore import Qt, QPoint, QEasingCurve, QTimer, QEvent, QVariantAnimation, QPropertyAnimation, QRect, QRectF
-from PyQt6.QtGui import QColor, QPainter, QLinearGradient, QBrush, QCursor, QPixmap, QAction, QPen
-from PyQt6.QtWidgets import (
-    QWidget, QLineEdit, QHBoxLayout, QPushButton, QLabel, QVBoxLayout,
-    QApplication, QMenu, QFileDialog,
+from PyQt6.QtCore import (
+    QEasingCurve,
+    QEvent,
+    QPoint,
+    QPropertyAnimation,
+    QRect,
+    QRectF,
+    Qt,
+    QTimer,
+    QVariantAnimation,
 )
+from PyQt6.QtGui import QAction, QBrush, QColor, QCursor, QPainter, QPen, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
-from typing import List, Optional, Tuple
+from PyQt6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
-from vda.core.session_service import SessionService
-from vda.core.vision_capture import VisionCaptureService
-from vda.core.pyautogui_executor import PyAutoGUIExecutor
-from vda.core.enhanced_executor import EnhancedExecutor
-from vda.core.auto_template_extractor import AutoTemplateExtractor
-from vda.core.default_prompt import build_system_prompt
 from vda.auth.provider_config import ProviderConfig
+from vda.core.agent_manager.agent_manager import AgentManager
+from vda.core.agent_manager.agent_worker import AgentWorker
 from vda.core.api_client import APIClient
-from vda.core.zen_client import ZenClient
-from vda.core.memory_manager import ShortTermMemory, LongTermMemory, DailyTaskCache
-from vda.core.task_decomposer import TaskDecomposer
+from vda.core.auto_template_extractor import AutoTemplateExtractor
 from vda.core.behavior_tracker import BehaviorTracker
-from vda.core.clickers import ClickerEngine
-from vda.ui.components.vision_button import VisionButton
+from vda.core.default_prompt import build_system_prompt
+from vda.core.enhanced_executor import EnhancedExecutor
+from vda.core.memory_manager import DailyTaskCache, LongTermMemory, ShortTermMemory
+from vda.core.pyautogui_executor import PyAutoGUIExecutor
+from vda.core.session_service import SessionService
+from vda.core.tool_registry import get_registry
+from vda.core.zen_client import ZenClient
+from vda.ui.assistant.chat_popup import ChatHistoryPopup
+from vda.ui.assistant.thinking_panel import ThinkingPanel
+from vda.ui.assistant.uied_handler import UIEDHandlerMixin
+from vda.ui.assistant.vision_handler import VisionHandlerMixin
+from vda.ui.assistant.worker import APIServerWorker
 from vda.ui.components.attach_button import AttachButton
 from vda.ui.components.send_button import SendButton
 from vda.ui.components.settings_button import SettingsButton
 from vda.ui.components.uied_button import UIEDButton
+from vda.ui.components.vision_button import VisionButton
 from vda.ui.components.voice_button import VoiceButton
 from vda.ui.settings_dialog import SettingsDialog
-from vda.ui.assistant.chat_popup import ChatHistoryPopup
-from vda.ui.assistant.worker import APIServerWorker
-from vda.core.agent_manager.agent_worker import AgentWorker
-from vda.core.agent_manager.agent_manager import AgentManager
-from vda.core.tool_registry import get_registry
-from vda.ui.assistant.thinking_panel import ThinkingPanel
-from vda.ui.assistant.vision_handler import VisionHandlerMixin
-from vda.ui.assistant.uied_handler import UIEDHandlerMixin
 
-import os
 UI_AUTOMATION_SUPPORTED = os.name == "nt"
 auto = None
 
@@ -177,7 +188,7 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
                             return (cx, cy, name)
                     except:
                         continue
-            except Exception as e:
+            except Exception:
                 logger.exception("Error while scanning taskbar UI elements")
             try:
                 active = auto.GetForegroundControl()
@@ -308,22 +319,22 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         painter.setOpacity(1.0 if (self.is_hovered or self.is_expanded) else 0.8)
 
         painter.setBrush(QBrush(QColor("#1e1e24"))) # Dark charcoal background to match React vda-gui
-        
+
         pen = QPen(QColor("#404040")) # Neutral border
         pen.setWidth(1)
         painter.setPen(pen)
-        
+
         # Adjust rect to account for pen width
         painter.drawRoundedRect(0, 0, width - 1, height - 1, radius, radius)
 
         painter.setOpacity(1.0)
-        
+
         # Calculate rect for the SVG icon
         icon_size = 32
         x_pos = float(width - self.collapsed_size / 2 - icon_size / 2)
         y_pos = float(height / 2 - icon_size / 2)
         rect = QRectF(x_pos, y_pos, float(icon_size), float(icon_size))
-        
+
         if self.star_renderer.isValid():
             self.star_renderer.render(painter, rect)
         else:
@@ -517,10 +528,11 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
 
 
     def select_files(self):
-        from pathlib import Path
         import base64
+        from pathlib import Path
+
         from vda.utils.file_encoder import MAX_FILE_SIZE
-        
+
         files, _ = QFileDialog.getOpenFileNames(self, "Select Files", "", "All Files (*);;Images (*.png *.jpg *.jpeg *.bmp)")
         if not files:
             return
@@ -542,7 +554,7 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
                     logger.error(f"Failed to read image file {path}: {e}")
             else:
                 try:
-                    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                    with open(path, encoding="utf-8", errors="ignore") as f:
                         text = f.read()
                     self.staged_files.append({"type": "file", "path": str(path), "content": text, "name": path.name})
                 except Exception as e:
@@ -724,7 +736,7 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         skills_path = self.settings.get("skills_md_path")
         if skills_path and os.path.exists(skills_path):
             try:
-                with open(skills_path, "r", encoding="utf-8") as f:
+                with open(skills_path, encoding="utf-8") as f:
                     skills_content = f.read()
             except Exception as e:
                 logger.warning(f"Failed to read skills file: {e}")
@@ -745,6 +757,7 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
 
         Args:
             results: List of step result dictionaries from AgentWorker.
+
         Returns:
             A string summarizing the outcome, or None if no usable text was produced.
         """
@@ -778,7 +791,10 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
 
         if self.is_vision_enabled:
             try:
-                import pyautogui, io, base64
+                import base64
+                import io
+
+                import pyautogui
                 from PIL import Image
 
                 sw, sh = pyautogui.size()
@@ -794,7 +810,7 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
                         img = img.resize((800, int(sh * 800 / sw)), Image.Resampling.LANCZOS)
                     except AttributeError:
                         img = img.resize((800, int(sh * 800 / sw)), Image.LANCZOS)
-                
+
                 img = img.convert("RGB")
                 buf = io.BytesIO()
                 img.save(buf, format="JPEG", quality=65, optimize=True)
@@ -1037,9 +1053,7 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         )
 
         # Short-circuit: when vision is OFF and the message looks like pure chat,
-        # skip the entire agent loop and call the LLM directly. The agent loop is
-        # designed for multi-step desktop automation — running it on "hello" causes
-        # a 10-iteration doom loop and a 30-second wait for no reason.
+        # skip the entire agent loop and call the LLM directly.
         if not vision_mode and self._looks_like_chat(user_input):
             logger.info("[Worker] Chat-mode short-circuit (no agent loop) for: %s", user_input[:60])
             prompted_history = self._build_history_with_prompt(list(history))
@@ -1116,7 +1130,7 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
     def _on_tool_executed(self, tool_name, args, result, success):
         """Handle tool execution signal by updating the thinking status (OpenCode style)."""
         status_icon = "✅" if success else "❌"
-        
+
         if tool_name == "terminal":
             cmd = args.get("command", "")
             if len(cmd) > 30: cmd = cmd[:27] + "..."

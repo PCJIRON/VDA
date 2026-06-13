@@ -5,4 +5,3 @@ The original ``perfect_clicker.py`` has been split into a package under
 existing imports continue to work.
 """
 
-from vda.core.perfect_clicker import SelfCalibrator, PerfectClicker

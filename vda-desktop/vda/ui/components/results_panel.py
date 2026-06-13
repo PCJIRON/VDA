@@ -4,9 +4,9 @@ Displays a grid of component thumbnails with labels.
 Allows user to select components for automation.
 """
 
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QScrollArea, QWidget, QFrame, QHBoxLayout
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QCursor
+from PyQt6.QtWidgets import QDialog, QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 
 class UIEDResultsPanel(QDialog):

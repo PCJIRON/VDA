@@ -1,5 +1,3 @@
-import asyncio
-import pytest
 from vda.core.agent_manager.agent_manager import AgentManager, AgentState
 from vda.core.agent_manager.doom_detector import DoomLoopDetector
 

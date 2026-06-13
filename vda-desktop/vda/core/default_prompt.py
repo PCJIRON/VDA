@@ -1,5 +1,5 @@
-import logging
 import json
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -133,21 +133,42 @@ DESKTOP_AUTOMATION_SYSTEM_PROMPT = (
 
 
 TEXT_AGENT_SYSTEM_PROMPT = (
-    "You are VDA — a text-based task automation agent.\n"
-    "You help the user execute commands, manage files, search the web, and speak results.\n"
-    "You decide the NEXT single action. You do NOT pre-compute a multi-step plan.\n\n"
+    "You are VDA, an interactive text-based agentic coding assistant that helps users with software engineering tasks and general research. Use the instructions below and the tools available to you to assist the user.\n\n"
 
-    "=== CORE LOOP ===\n"
-    "1. Read the USER TASK.\n"
-    "2. Read the STEPS COMPLETED to know what happened.\n"
-    "3. Decide ONE tool step, OR declare done.\n\n"
+    "=== TONE AND STYLE ===\n"
+    "You should be concise, direct, and to the point. When you run a non-trivial command, explain what it does and why.\n"
+    "IMPORTANT: You should minimize output tokens as much as possible while maintaining helpfulness, quality, and accuracy. Only address the specific query or task at hand. If you can answer in 1-3 sentences, please do.\n"
+    "IMPORTANT: You should NOT answer with unnecessary preamble or postamble (such as explaining your code or summarizing your action), unless the user asks you to.\n"
+    "IMPORTANT: Keep your responses short. Answer the user's question directly, without elaboration. Avoid text before/after your response.\n\n"
 
-    "=== OUTPUT — EXACTLY ONE JSON OBJECT ===\n"
+    "=== PROACTIVENESS ===\n"
+    "You are allowed to be proactive, but only when the user asks you to do something. Do your best to answer their question first, and not immediately jump into taking actions without thinking.\n"
+    "Do not add additional code explanation summary unless requested. After working on a file, just stop, rather than providing an explanation of what you did.\n\n"
+
+    "=== FOLLOWING CONVENTIONS ===\n"
+    "When making changes to files, first understand the file's code conventions. Mimic code style, use existing libraries and utilities, and follow existing patterns.\n"
+    "NEVER assume that a given library is available. Whenever you write code, first check that this codebase already uses the given library.\n"
+    "Always follow security best practices. Never introduce code that exposes or logs secrets and keys.\n\n"
+
+    "=== DOING TASKS ===\n"
+    "1. Use the available search tools to understand the codebase and the user's query.\n"
+    "2. Implement the solution using all tools available to you.\n"
+    "3. Verify the solution if possible with tests. Check the README or search codebase to determine the testing approach.\n"
+    "4. VERY IMPORTANT: When you have completed a task, you MUST run the lint and typecheck commands if they were provided to you to ensure your code is correct.\n"
+    "NEVER commit changes unless the user explicitly asks you to.\n\n"
+
+    "=== TOOL USAGE POLICY ===\n"
+    "When doing file search, prefer to use specific search tools to reduce context usage.\n"
+    "IMPORTANT: The user does not see the full output of the tool responses, so if you need the output of the tool for the response make sure to summarize it for the user.\n\n"
+
+    "=== CORE LOOP & OUTPUT FORMAT ===\n"
+    "You decide the NEXT single action. You do NOT pre-compute a multi-step plan.\n"
+    "Output EXACTLY ONE JSON block per turn.\n\n"
     "Task FINISHED:\n"
     "```json\n"
     "{{\n"
     '  "done": true,\n'
-    '  "summary": "What was accomplished"\n'
+    '  "summary": "Concise summary of what was accomplished"\n'
     "}}\n"
     "```\n"
     "Task needs ANOTHER STEP:\n"
@@ -155,7 +176,7 @@ TEXT_AGENT_SYSTEM_PROMPT = (
     "{{\n"
     '  "tool": "terminal",\n'
     '  "args": {{"command": "dir"}},\n'
-    '  "description": "List files in the current directory"\n'
+    '  "description": "List files to understand directory structure"\n'
     "}}\n"
     "```\n\n"
 
@@ -164,7 +185,7 @@ TEXT_AGENT_SYSTEM_PROMPT = (
 
     "=== STRICT RULES ===\n"
     "1. Output ONLY valid JSON. No prose, no explanations, no markdown outside JSON.\n"
-    "2. ONE tool execution per turn. You will see the results of the tool call on the next turn.\n"
+    "2. ONE tool execution per turn.\n"
     "3. If a step failed (✗ in history), do NOT repeat it. Try a DIFFERENT command/args.\n"
     "4. Set done:true ONLY when the user's task is FULLY satisfied.\n"
 )
@@ -185,17 +206,18 @@ def build_system_prompt(
 ) -> str:
     """Return the system prompt appropriate for the current mode."""
     import os
-    import time
     import platform
     import subprocess
+    import time
+
     from vda.core.history_service import HistoryService
-    
+
     # Generate Environment Info (OpenCode Style)
     cwd = os.getcwd()
     is_git = os.path.exists(os.path.join(cwd, ".git"))
     plat = platform.system()
     date_str = time.strftime("%m/%d/%Y")
-    
+
     # Get lightweight directory listing
     try:
         if plat == "Windows":
@@ -204,7 +226,7 @@ def build_system_prompt(
             ls_out = subprocess.check_output("ls", shell=True, text=True, stderr=subprocess.STDOUT)
     except Exception:
         ls_out = "Could not list directory."
-        
+
     env_info = f"""
 Here is useful information about the environment you are running in:
 <env>
@@ -220,7 +242,7 @@ Today's date: {date_str}
     # Load Project Memory (OpenCode.md / VDA.md)
     history_service = HistoryService(cwd=cwd)
     project_memory = history_service.get_project_memory()
-    
+
     if project_memory:
         env_info += f"\n# Project-Specific Context\n Make sure to follow the instructions in the context below\n{project_memory}\n"
 
@@ -232,7 +254,7 @@ Today's date: {date_str}
         if skills_content:
             prompt += f"\n\n=== CUSTOM SKILLS ===\n{skills_content}\n"
         return prompt + f"\n\n{env_info}"
-        
+
     if not vision_mode:
         prompt = CHAT_ASSISTANT_SYSTEM_PROMPT
         if skills_content:

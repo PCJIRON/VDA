@@ -1,8 +1,6 @@
 import json
-import re
 import logging
-import asyncio
-from typing import Optional
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +129,7 @@ class TaskDecomposer:
                     return plan
             except json.JSONDecodeError:
                 pass
-        logger.warning(f"[Planner] Failed to parse plan, using single step")
+        logger.warning("[Planner] Failed to parse plan, using single step")
         return [{"step": text[:100], "action": "complete", "target": "", "details": text}]
 
     async def execute_step(self, step: dict, step_num: int, context: str = "",

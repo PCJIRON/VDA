@@ -1,5 +1,4 @@
-"""
-File encoding utility for VDA API.
+"""File encoding utility for VDA API.
 
 Encodes files to base64 for sending with OAuth-authenticated API requests.
 """
@@ -23,22 +22,22 @@ def encode_file(file_path: str) -> Optional[dict]:
         Dictionary with encoded content and metadata, or None on error.
     """
     path = Path(file_path)
-    
+
     if not path.exists() or not path.is_file():
         return None
-    
+
     # Check file size before loading into memory
     if path.stat().st_size > MAX_FILE_SIZE:
         return None
-    
+
     try:
         # Read and encode file
         with open(path, "rb") as f:
             content = base64.b64encode(f.read()).decode("utf-8")
-        
+
         # Detect MIME type
         mime_type, _ = mimetypes.guess_type(file_path)
-        
+
         return {
             "content": content,
             "name": path.name,
@@ -77,7 +76,7 @@ def get_file_category(file_path: str) -> str:
     mime_type, _ = mimetypes.guess_type(file_path)
     path = Path(file_path)
     ext = path.suffix.lower()
-    
+
     if mime_type and mime_type.startswith("image/"):
         return "image"
     elif ext in {".py", ".js", ".ts", ".java", ".go", ".rs", ".cpp", ".c", ".h"}:

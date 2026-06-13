@@ -1,13 +1,22 @@
 import asyncio
 
+from PyQt6.QtCore import Qt, QThread, QUrl, pyqtSignal
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QComboBox, QMessageBox, QGroupBox, QFormLayout, QWidget, QFileDialog,
-    QStackedWidget, QFrame,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFormLayout,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QFont, QDesktopServices
-from PyQt6.QtCore import QUrl
 
 from vda.auth.provider_config import ProviderConfig
 from vda.config.defaults import PROVIDERS
@@ -212,14 +221,14 @@ class SettingsDialog(QDialog):
         # API Key Row
         key_lbl = QLabel("API Key")
         key_lbl.setStyleSheet("font-size: 13px; font-weight: 500; color: #e5e5e5;")
-        
+
         self.api_key_input = QLineEdit()
         self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_key_input.setPlaceholderText("Enter your API key...")
         current_key = self._config.get_api_key()
         if current_key:
             self.api_key_input.setText(current_key)
-            
+
         form_layout.addRow(key_lbl, self.api_key_input)
 
         # Helper links and hints for API key
@@ -228,10 +237,10 @@ class SettingsDialog(QDialog):
         self.docs_link.setStyleSheet("color: #3b82f6; font-size: 11px; font-weight: 500;")
         self.docs_link.setCursor(Qt.CursorShape.PointingHandCursor)
         self.docs_link.mousePressEvent = lambda e: self._open_docs()
-        
+
         self.api_hint = QLabel()
         self.api_hint.setStyleSheet("color: #737373; font-size: 11px;")
-        
+
         hint_row.addWidget(self.docs_link)
         hint_row.addStretch()
         hint_row.addWidget(self.api_hint)

@@ -12,10 +12,7 @@ The CORRECT extraction: when the user typed something, use
 vision_prompt. When it's a vision hotkey trigger (no user text), fall
 back to extracting from the payload.
 """
-from typing import List
-from unittest.mock import MagicMock
 
-import pytest
 
 
 def _extract_user_input(message, last_user_text=""):
@@ -40,7 +37,8 @@ def test_plain_string_passes_through():
 def test_vision_mode_uses_last_user_text():
     """The user typed text in vision mode. The message is a list with
     vision_prompt + image. We must return the ORIGINAL clean text, not
-    the vision_prompt (which has output format instructions)."""
+    the vision_prompt (which has output format instructions).
+    """
     vision_prompt = "[USER REQUEST]\n\"open chrome\"\n\n[OUTPUT FORMAT - CRITICAL]\nRespond ONLY in JSON..."
     payload = [
         {"type": "text", "text": vision_prompt},
@@ -52,7 +50,8 @@ def test_vision_mode_uses_last_user_text():
 
 def test_vision_hotkey_no_last_user_text():
     """Vision hotkey trigger: no user text. Fall back to extracting from
-    the vision_prompt in the payload."""
+    the vision_prompt in the payload.
+    """
     vision_prompt = "[VISION METADATA]\nScreen Resolution: 1920x1080\n..."
     payload = [
         {"type": "text", "text": vision_prompt},

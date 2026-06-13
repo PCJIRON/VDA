@@ -4,13 +4,13 @@ Searches the web via configured search API and returns structured results.
 """
 
 import logging
+import re
+import urllib.parse
+
+import httpx
 
 from vda.core.tool_registry.base_tool import BaseTool
 from vda.core.tool_registry.registry import register_tool
-
-import httpx
-import re
-import urllib.parse
 
 logger = logging.getLogger(__name__)
 

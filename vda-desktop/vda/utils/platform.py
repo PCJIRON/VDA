@@ -1,12 +1,10 @@
-"""
-Platform detection utilities.
+"""Platform detection utilities.
 
 Provides functions to detect the current operating system.
 """
 
 import sys
 from typing import Literal
-
 
 Platform = Literal["windows", "macos", "linux", "other"]
 

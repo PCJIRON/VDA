@@ -7,10 +7,9 @@ configurations, session caching behavior, and the PermissionDecision enum.
 import pytest
 
 from vda.core.agent_manager.permission_system import (
-    PermissionSystem,
     PermissionDecision,
+    PermissionSystem,
 )
-
 
 # Test configuration matching defaults.py AGENT_TYPES
 TEST_AGENT_TYPES = {
@@ -106,7 +105,7 @@ class TestPermissionSystem:
         assert result == PermissionDecision.ASK
 
     def test_agent_type_scoping_terminal_asks_mutation(self, perm_system):
-        """terminal agent calls terminal tool → ASK (mutation)."""
+        """Terminal agent calls terminal tool → ASK (mutation)."""
         result = perm_system.check_permission("terminal", agent_type="terminal")
         assert result == PermissionDecision.ASK
 
@@ -201,19 +200,19 @@ class TestPermissionSystem:
     def test_permission_mode_yolo_allows_all(self):
         """When permission_mode is 'yolo', all tool calls are allowed immediately."""
         system = PermissionSystem(settings={"permission_mode": "yolo"})
-        
+
         # Read-only tool should be allowed
         assert system.check_permission("file_read", agent_type="main") == PermissionDecision.ALLOW
-        
+
         # Mutation tool should be allowed
         assert system.check_permission("terminal", agent_type="main") == PermissionDecision.ALLOW
-        
+
         # Unknown tool should be allowed
         assert system.check_permission("nonexistent_tool", agent_type="main") == PermissionDecision.ALLOW
 
     def test_permission_mode_ask_respects_rules(self):
         """When permission_mode is 'ask', standard rules are respected."""
         system = PermissionSystem(settings={"permission_mode": "ask", "agent_types": TEST_AGENT_TYPES})
-        
+
         # Mutation tool should prompt (ASK)
         assert system.check_permission("terminal", agent_type="main") == PermissionDecision.ASK

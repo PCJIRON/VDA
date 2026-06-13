@@ -1,5 +1,4 @@
-"""
-AI Desktop Assistant Runner.
+"""AI Desktop Assistant Runner.
 
 Run with: py run.py
 """

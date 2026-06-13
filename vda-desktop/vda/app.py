@@ -1,9 +1,7 @@
-import sys
-import logging
 from pathlib import Path
 
-from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QCoreApplication
+from PyQt6.QtWidgets import QApplication
 
 from vda.config.settings import Settings
 from vda.utils.logger import setup_logger
@@ -22,7 +20,7 @@ class DesktopApp:
         self.logger = setup_logger(log_file=log_path)
         self.logger.info("=" * 60)
         self.logger.info("AI Desktop Assistant Starting...")
-        self.logger.info(f"Version: 0.5.0")
+        self.logger.info("Version: 0.5.0")
         self.logger.info(f"Log file: {log_path}")
 
         self.settings = Settings()

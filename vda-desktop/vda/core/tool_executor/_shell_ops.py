@@ -3,7 +3,6 @@
 Extracted from the original monolithic ``tool_executor.py``.
 """
 
-import subprocess
 import logging
 
 logger = logging.getLogger(__name__)
@@ -31,5 +30,5 @@ def execute_shell(command: str, workspace_dir: str = None) -> str:
         # Note: changing directory in a persistent shell should ideally be done by the agent
         # via 'cd', but we sync it here if explicitly requested.
         pass # Ignore workspace_dir overrides to preserve true persistent state
-        
+
     return shell.execute(command)

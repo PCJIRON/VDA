@@ -5,8 +5,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional
 
-from vda.utils.screen import ScreenEnv, ScreenDetector
 from vda.utils.safety import restore_failsafe
+from vda.utils.screen import ScreenDetector, ScreenEnv
 
 logger = logging.getLogger(__name__)
 

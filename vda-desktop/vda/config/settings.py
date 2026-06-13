@@ -12,7 +12,7 @@ class Settings:
         self._load()
 
     def _get_default_config_path(self) -> Path:
-        from vda.utils.platform import is_windows, is_macos, is_linux
+        from vda.utils.platform import is_linux, is_macos, is_windows
         if is_windows():
             base = Path.home() / "AppData" / "Local" / "VDADesktop"
         elif is_macos():
@@ -26,10 +26,10 @@ class Settings:
     def _load(self) -> None:
         if self._config_path.exists():
             try:
-                with open(self._config_path, "r", encoding="utf-8") as f:
+                with open(self._config_path, encoding="utf-8") as f:
                     file_settings = json.load(f)
                     self._settings.update(file_settings)
-            except (json.JSONDecodeError, IOError) as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"Warning: Could not load config file: {e}")
 
     def save(self) -> None:

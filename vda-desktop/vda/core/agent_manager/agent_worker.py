@@ -257,14 +257,14 @@ class AgentWorker(QThread):
                     self.permission_required.emit(tool_name, json.dumps(args), agent_type)
                     self._agent_manager.pause(f"Permission required for: {tool_name}")
                     self._paused = True
-                    
+
                     # Wait for user input
                     while self._paused and self._agent_manager.state == AgentState.PAUSED:
                         await asyncio.sleep(0.1)
-                        
+
                     if self._agent_manager.state in (AgentState.COMPLETE, AgentState.ERROR):
                         return
-                        
+
                     # Recheck decision
                     new_decision = self._agent_manager.permission_system.check_permission(
                         tool_name, agent_type, args
@@ -312,7 +312,7 @@ class AgentWorker(QThread):
                     # Inject api_client if the tool needs it (e.g. AgentTool)
                     if hasattr(tool, "api_client"):
                         tool.api_client = getattr(self._agent_manager, "api_client", None)
-                        
+
                     raw_result = await tool.execute(**args)
                     result_str = (
                         json.dumps(raw_result)[:500]
@@ -439,7 +439,7 @@ class AgentWorker(QThread):
         decision = (
             PermissionDecision.ALLOW if allowed else PermissionDecision.DENY
         )
-        
+
         # Retrieve active step arguments to cache correctly
         args = {}
         plan = self._agent_manager.plan
@@ -455,7 +455,7 @@ class AgentWorker(QThread):
             "[AgentWorker] Permission response for '%s' (args: %s): %s",
             tool_name, args, decision.value,
         )
-        
+
         # Resume the agent execution
         self._agent_manager.resume()
         self._paused = False

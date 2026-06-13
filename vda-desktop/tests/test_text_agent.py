@@ -1,6 +1,5 @@
 import asyncio
-import json
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -65,13 +64,13 @@ def test_text_agent_skips_screenshots(mock_registry):
         return await manager.step()
 
     next_state, output = asyncio.run(run())
-    
+
     assert next_state == AgentState.EXECUTE
     assert len(manager.plan) == 1
     assert manager.plan[0]["tool"] == "terminal"
     assert manager.plan[0]["args"] == {"command": "echo hello"}
     assert manager.plan[0]["step"] == "run echo"
-    
+
     # Verify screenshot was never taken
     screenshot_fn.assert_not_called()
 
@@ -83,13 +82,13 @@ def test_text_agent_executes_tool_via_worker(mock_registry):
         tool_registry=mock_registry,
         vision_mode=False,
     )
-    
+
     # Cache ALLOW decision for terminal tool to bypass the ASK prompt
     from vda.core.agent_manager.permission_system import PermissionDecision
     manager.permission_system.cache_decision(
         "terminal", "main", {"command": "echo test"}, PermissionDecision.ALLOW
     )
-    
+
     # We simulate a plan containing a tool call
     manager.plan = [{
         "step": "Run shell test",
@@ -100,7 +99,7 @@ def test_text_agent_executes_tool_via_worker(mock_registry):
     manager.state = AgentState.EXECUTE
 
     worker = AgentWorker(manager, "run echo")
-    
+
     async def run_execution():
         # Trigger execute_step manually on worker
         await worker._handle_execute_step({
@@ -113,7 +112,7 @@ def test_text_agent_executes_tool_via_worker(mock_registry):
     # Verify tool registry was queried and mock tool executed
     mock_registry.get_tool.assert_called_with("terminal")
     mock_registry.dummy_tool.execute.assert_called_with(command="echo test")
-    
+
     # Verify outcome was recorded
     assert len(manager.completed_steps) == 1
     assert manager.completed_steps[0]["action"] == "terminal"

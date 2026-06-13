@@ -13,16 +13,15 @@ import base64
 import io
 import logging
 import os
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
 import pyautogui
-
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from .models import UIComponent
 from .detection_worker import UIEDDetectionWorker
+from .models import UIComponent
 
 logger = logging.getLogger(__name__)
 

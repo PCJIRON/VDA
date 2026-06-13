@@ -1,8 +1,9 @@
 import os
-from PyQt6.QtWidgets import QPushButton
-from PyQt6.QtCore import Qt, QRectF
-from PyQt6.QtGui import QColor, QPainter, QBrush, QFont
+
+from PyQt6.QtCore import QRectF, Qt
+from PyQt6.QtGui import QBrush, QColor, QFont, QPainter
 from PyQt6.QtSvg import QSvgRenderer
+from PyQt6.QtWidgets import QPushButton
 
 
 class BaseButton(QPushButton):

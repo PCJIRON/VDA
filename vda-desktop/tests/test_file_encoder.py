@@ -1,13 +1,12 @@
 """Tests for file encoder utility."""
 
-import pytest
 import tempfile
 from pathlib import Path
 
 from vda.utils.file_encoder import (
     encode_file,
-    is_image_file,
     get_file_category,
+    is_image_file,
 )
 
 
@@ -21,10 +20,10 @@ class TestEncodeFile:
         ) as f:
             f.write("Hello, World!")
             temp_path = f.name
-        
+
         try:
             result = encode_file(temp_path)
-            
+
             assert result is not None
             assert result["name"].endswith(".txt")
             assert result["size"] == 13
@@ -40,10 +39,10 @@ class TestEncodeFile:
         ) as f:
             f.write("print('hello')")
             temp_path = f.name
-        
+
         try:
             result = encode_file(temp_path)
-            
+
             assert result is not None
             assert result["name"].endswith(".py")
             assert result["mime_type"] == "text/x-python"
@@ -68,10 +67,10 @@ class TestEncodeFile:
         ) as f:
             f.write(b"\x00\x01\x02\x03")
             temp_path = f.name
-        
+
         try:
             result = encode_file(temp_path)
-            
+
             assert result is not None
             assert "content" in result
             # Verify base64 encoding
@@ -89,7 +88,7 @@ class TestIsImageFile:
         """Test PNG file detected as image."""
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
             temp_path = f.name
-        
+
         try:
             assert is_image_file(temp_path) is True
         finally:
@@ -99,7 +98,7 @@ class TestIsImageFile:
         """Test JPG file detected as image."""
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
             temp_path = f.name
-        
+
         try:
             assert is_image_file(temp_path) is True
         finally:
@@ -109,7 +108,7 @@ class TestIsImageFile:
         """Test text file not detected as image."""
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
             temp_path = f.name
-        
+
         try:
             assert is_image_file(temp_path) is False
         finally:
@@ -119,7 +118,7 @@ class TestIsImageFile:
         """Test Python file not detected as image."""
         with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as f:
             temp_path = f.name
-        
+
         try:
             assert is_image_file(temp_path) is False
         finally:
@@ -133,7 +132,7 @@ class TestGetFileCategory:
         """Test code file category."""
         with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as f:
             temp_path = f.name
-        
+
         try:
             category = get_file_category(temp_path)
             assert category == "code"
@@ -144,7 +143,7 @@ class TestGetFileCategory:
         """Test config file category."""
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
             temp_path = f.name
-        
+
         try:
             category = get_file_category(temp_path)
             assert category == "config"
@@ -155,7 +154,7 @@ class TestGetFileCategory:
         """Test document file category."""
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
             temp_path = f.name
-        
+
         try:
             category = get_file_category(temp_path)
             assert category == "document"
@@ -166,7 +165,7 @@ class TestGetFileCategory:
         """Test image file category."""
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
             temp_path = f.name
-        
+
         try:
             category = get_file_category(temp_path)
             assert category == "image"

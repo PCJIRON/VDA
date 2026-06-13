@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 from vda.core.tool_registry.base_tool import BaseTool
 from vda.core.tool_registry.registry import register_tool
+
 # Module-level imports removed to prevent circular dependency
 
 logger = logging.getLogger(__name__)
@@ -55,32 +56,44 @@ class AgentTool(BaseTool):
         self.api_client: Optional[Any] = None
 
     async def execute(self, prompt: str, **kwargs: Any) -> str:
-        """Execute the agent tool by delegating to SubAgentDelegator."""
+        """Execute the agent tool by delegating to an isolated AgentManager."""
         if not self.api_client:
             return "Error: api_client not injected into AgentTool."
 
-        # We import locally to avoid a circular dependency with tool_registry at module load time.
-        from vda.core.agent_manager.sub_agent_delegator import SubAgentDelegator, SubAgentContext
+        logger.info(f"[AgentTool] Spawning sub-agent for task: {prompt[:50]}...")
 
-        # The SubAgentDelegator expects a SubAgentContext
-        # We assign it 'task' agent_type to give it scoped access to tools.
-        context = SubAgentContext(
-            original_goal=prompt,
-            preceding_work="No preceding work provided.",
-            subtask=prompt,
-            constraints="Execute autonomously and return exactly what was requested.",
-            agent_type="task",
+        # 1. Create a scoped ToolRegistry with only read/research tools
+        # OpenCode allows: GlobTool, GrepTool, LS, View.
+        # VDA equivalent: web_search, web_fetch, file_read, file_glob, file_grep
+        from vda.core.tool_registry.registry import ToolRegistry, get_registry
+        scoped_registry = ToolRegistry()
+        global_registry = get_registry()
+
+        allowed_tools = ["web_search", "web_fetch", "file_read", "file_glob", "file_grep"]
+        for t_name in allowed_tools:
+            tool_cls = global_registry._registry.get(t_name)
+            if tool_cls:
+                # Copy the tool class to the scoped registry
+                scoped_registry.register(t_name, tool_cls)
+
+        # 2. Instantiate a fresh AgentManager with the scoped registry and NO vision
+        from vda.core.agent_manager.agent_manager import AgentManager
+
+        sub_manager = AgentManager(
+            api_client=self.api_client,
+            tool_registry=scoped_registry,
+            vision_mode=False,
+            # Pass a high max iterations to ensure it can finish complex searches
+            max_iterations=50
         )
 
-        delegator = SubAgentDelegator(api_client=self.api_client)
-        
-        logger.info(f"[AgentTool] Spawning sub-agent for task: {prompt[:50]}...")
-        result = await delegator.spawn_and_execute(context)
+        # We start the agent directly in the INIT state with the prompt
+        sub_manager.reset()
+        sub_manager._user_input = prompt
+        from vda.core.agent_manager.agent_manager import AgentState
+        sub_manager.state = AgentState.INIT
 
-        if not result.success:
-            return f"Agent failed: {result.error}"
+        # 3. Run the agent loop until it reaches COMPLETE or ERROR
+        result = await sub_manager.run_to_completion_async()
 
-        if not result.output:
-            return "Agent completed but returned no output."
-
-        return result.output
+        return result

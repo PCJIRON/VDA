@@ -1,15 +1,15 @@
-"""
-UIED Button - Triggers UI Element Detection.
+"""UIED Button - Triggers UI Element Detection.
 
 Captures a screenshot and triggers UI detection with
 animated states (detecting, ready, etc.).
 """
 
-from PyQt6.QtCore import Qt, QTimer, QRect, QRectF, QVariantAnimation
-from PyQt6.QtGui import QColor, QPainter, QBrush, QFont
+import logging
+
+from PyQt6.QtCore import QRect, QRectF, Qt, QTimer, QVariantAnimation
+from PyQt6.QtGui import QBrush, QColor, QFont, QPainter
 
 from .base_button import BaseButton
-import logging
 
 logger = logging.getLogger(__name__)
 

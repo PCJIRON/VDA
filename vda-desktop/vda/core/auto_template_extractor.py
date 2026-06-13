@@ -1,8 +1,9 @@
+import logging
+import os
+from pathlib import Path
+
 import cv2
 import numpy as np
-import os
-import logging
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

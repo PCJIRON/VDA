@@ -7,7 +7,7 @@ details (file paths, errors, decisions, pending items) per research Pitfall 4.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from vda.core.api_client import APIClient
 

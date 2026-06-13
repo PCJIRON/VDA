@@ -1,11 +1,11 @@
-"""
-VDA Desktop Application Entry Point.
+"""VDA Desktop Application Entry Point.
 
 Run with: py -m vda
 Or: py run.py
 """
 
 import sys
+
 from vda.app import DesktopApp
 
 

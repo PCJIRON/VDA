@@ -10,9 +10,11 @@ via their @register_tool decorators.
 """
 
 # Import all tool modules to trigger @register_tool decorators
-from . import web_search  # noqa: F401
-from . import web_fetch  # noqa: F401
-from . import terminal  # noqa: F401
-from . import file_tools  # noqa: F401
-from . import voice_tools  # noqa: F401
-from . import agent  # noqa: F401
+from . import (
+    agent,  # noqa: F401
+    file_tools,  # noqa: F401
+    terminal,  # noqa: F401
+    voice_tools,  # noqa: F401
+    web_fetch,  # noqa: F401
+    web_search,  # noqa: F401
+)

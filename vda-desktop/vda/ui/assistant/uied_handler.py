@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import re
-from typing import List, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -59,12 +59,13 @@ class UIEDHandlerMixin:
             self._uied_overlay.set_components(self._uied_components)
 
     def _on_uied_component_added(self, x: int, y: int, w: int, h: int, label: str, comp_type: str):
+        import time
         import uuid
+
         import cv2
         import numpy as np
-        from PyQt6.QtWidgets import QApplication
         import pyautogui as _pag
-        import time
+        from PyQt6.QtWidgets import QApplication
 
         new_component = {
             'id': f"comp_user_{uuid.uuid4().hex[:6]}",
@@ -126,7 +127,7 @@ class UIEDHandlerMixin:
             new_component['_template_rgb'] = template_bgr
             new_component['_template_gray'] = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2GRAY)
 
-            logger.info(f"Template captured successfully using pyautogui screenshot + crop")
+            logger.info("Template captured successfully using pyautogui screenshot + crop")
 
         except Exception as e:
             logger.error(f"Failed to capture template: {e}", exc_info=True)
@@ -154,7 +155,6 @@ class UIEDHandlerMixin:
 
     def _on_uied_overlay_closed(self):
         import cv2
-        import numpy as np
 
         logger.info(f"Manual box editor closed. Final component count: {len(self._uied_components)}")
 
@@ -248,7 +248,7 @@ class UIEDHandlerMixin:
             return
 
         if self._pyautogui_executor:
-            logger.info(f"UIED: Attempting template matching with threshold=0.7")
+            logger.info("UIED: Attempting template matching with threshold=0.7")
             coords = self._pyautogui_executor.find_with_template(template_path, threshold=0.7)
 
             if coords:
@@ -316,6 +316,7 @@ class UIEDHandlerMixin:
 
         try:
             import pyautogui
+
             from vda.utils.safety import restore_failsafe
 
             screen_w, screen_h = pyautogui.size()

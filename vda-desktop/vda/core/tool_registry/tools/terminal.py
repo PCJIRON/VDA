@@ -4,12 +4,11 @@ Executes shell commands and returns stdout/stderr output.
 """
 
 import logging
+import os
 
+from vda.core.tool_executor._shell_ops import execute_shell
 from vda.core.tool_registry.base_tool import BaseTool
 from vda.core.tool_registry.registry import register_tool
-
-import os
-from vda.core.tool_executor._shell_ops import execute_shell
 
 logger = logging.getLogger(__name__)
 

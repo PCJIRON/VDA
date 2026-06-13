@@ -3,10 +3,10 @@
 Extracted from the original monolithic ``tool_executor.py``.
 """
 
-import os
-import re
 import glob
 import logging
+import os
+import re
 from pathlib import Path
 from typing import List
 
@@ -45,7 +45,7 @@ def read_file(filepath: str, workspace_dir: str) -> str:
     if not path.is_file():
         return f"Error: Not a file: {filepath}"
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             content = f.read()
         return f"--- {filepath} ---\n{content}"
     except UnicodeDecodeError:
@@ -108,14 +108,14 @@ def search_files(query: str, search_type: str, workspace_dir: str) -> str:
                 path = os.path.join(root, file)
                 rel_path = os.path.relpath(path, workspace_dir)
                 try:
-                    with open(path, "r", encoding="utf-8") as f:
+                    with open(path, encoding="utf-8") as f:
                         for i, line in enumerate(f, 1):
                             if pattern.search(line):
                                 results_tmp.append(f"{rel_path}:{i}:{line.strip()}")
                                 if len(results_tmp) >= 50:
                                     results_tmp.append("... (truncated)")
                                     return "\n".join(results_tmp)
-                except (UnicodeDecodeError, IOError):
+                except (OSError, UnicodeDecodeError):
                     pass
         if not results_tmp:
             return "No matches found."

@@ -1,11 +1,9 @@
 """Database manager for OpenCode-compatible SQLite session/memory storage."""
 
-import sqlite3
-import os
-import json
 import logging
-from pathlib import Path
-from typing import Any, Optional
+import os
+import sqlite3
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);
 
 class DatabaseManager:
     """Manages the SQLite database connection and operations."""
-    
+
     def __init__(self, db_path: str):
         self.db_path = db_path
         self._ensure_dir()
@@ -97,13 +95,13 @@ class DatabaseManager:
         """Execute a single query with auto-commit."""
         with self.get_connection() as conn:
             return conn.execute(query, params)
-            
+
     def fetchone(self, query: str, params: tuple = ()) -> Optional[sqlite3.Row]:
         """Execute a query and fetch a single row."""
         with self.get_connection() as conn:
             cursor = conn.execute(query, params)
             return cursor.fetchone()
-            
+
     def fetchall(self, query: str, params: tuple = ()) -> list[sqlite3.Row]:
         """Execute a query and fetch all rows."""
         with self.get_connection() as conn:

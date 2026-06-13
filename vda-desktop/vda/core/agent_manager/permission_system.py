@@ -16,7 +16,6 @@ import enum
 import logging
 from typing import Any, Optional
 
-
 logger = logging.getLogger(__name__)
 
 

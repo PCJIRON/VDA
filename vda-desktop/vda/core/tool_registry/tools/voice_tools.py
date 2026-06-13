@@ -4,11 +4,10 @@ Speaks text responses via text-to-speech (TTS).
 """
 
 import logging
+import subprocess
 
 from vda.core.tool_registry.base_tool import BaseTool
 from vda.core.tool_registry.registry import register_tool
-
-import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -44,16 +43,16 @@ class VoiceTool(BaseTool):
             return "Error: No text specified to speak"
 
         logger.info("[%s] Speaking text: %s", self.name, text)
-        
+
         # Clean quotes for PowerShell commands
         escaped_text = text.replace("'", "''").replace('"', '`"')
-        
+
         # Primary: System.Speech.Synthesis
         ps_cmd = (
             f"Add-Type -AssemblyName System.Speech; "
             f"(New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('{escaped_text}')"
         )
-        
+
         try:
             result = subprocess.run(
                 ["powershell", "-Command", ps_cmd],

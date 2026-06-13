@@ -5,20 +5,11 @@ extracted into its own module to reduce file size and improve testability.
 """
 
 import base64
-import io
-import json
 import logging
-import os
-import time
-from dataclasses import asdict
-from typing import List, Tuple, Optional
 
 import cv2
 import numpy as np
-from PIL import Image
-import pyautogui
-
-from PyQt6.QtCore import QObject, pyqtSignal, QThread
+from PyQt6.QtCore import QThread, pyqtSignal
 
 logger = logging.getLogger(__name__)
 

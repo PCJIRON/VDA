@@ -1,12 +1,11 @@
-"""
-Slash command registry.
+"""Slash command registry.
 
 Provides /help, /clear, /model, /theme, /stats, /quit commands.
 """
 
-from dataclasses import dataclass
-from typing import Callable, Optional, List
 import logging
+from dataclasses import dataclass
+from typing import Callable, List, Optional
 
 logger = logging.getLogger(__name__)
 

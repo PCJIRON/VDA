@@ -3,14 +3,14 @@
 Fetches content from a URL and returns it as clean markdown.
 """
 
+import html as html_lib
 import logging
+import re
+
+import httpx
 
 from vda.core.tool_registry.base_tool import BaseTool
 from vda.core.tool_registry.registry import register_tool
-
-import httpx
-import re
-import html as html_lib
 
 logger = logging.getLogger(__name__)
 

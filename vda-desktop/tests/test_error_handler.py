@@ -1,13 +1,12 @@
 """Tests for error handling utilities."""
 
-import pytest
 import httpx
 
 from vda.utils.error_handler import (
     ErrorType,
     classify_error,
-    get_user_message,
     get_suggested_action,
+    get_user_message,
 )
 
 
