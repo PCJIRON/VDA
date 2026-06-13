@@ -1,0 +1,702 @@
+{
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\run.py": {
+    "mtime": 1781205128.0437863,
+    "ast_hash": "5856c17a963d6e0365c3026701858926",
+    "semantic_hash": "5856c17a963d6e0365c3026701858926"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\run_detect.py": {
+    "mtime": 1781237382.026014,
+    "ast_hash": "388411baac5ddea1ace9455a15ca55bd",
+    "semantic_hash": "388411baac5ddea1ace9455a15ca55bd"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\setup_graphify.ps1": {
+    "mtime": 1781237370.4270976,
+    "ast_hash": "52078e71e92b746e92e4c29edcd3135c",
+    "semantic_hash": "52078e71e92b746e92e4c29edcd3135c"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\test_fix.py": {
+    "mtime": 1781205128.067438,
+    "ast_hash": "3b73e28494968459eab170cf60c823ca",
+    "semantic_hash": "3b73e28494968459eab170cf60c823ca"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\__init__.py": {
+    "mtime": 1781189332.8605134,
+    "ast_hash": "aa475a00de32c23bbba6d965736aef6e",
+    "semantic_hash": "aa475a00de32c23bbba6d965736aef6e"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\agent_manager\\test_agent_loop.py": {
+    "mtime": 1781205130.9867282,
+    "ast_hash": "c69076b59e0a07b79c7fc2ab8885f4af",
+    "semantic_hash": "c69076b59e0a07b79c7fc2ab8885f4af"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\agent_manager\\test_replan_flow.py": {
+    "mtime": 1781205131.0075722,
+    "ast_hash": "33264a495a8b0eb089f93d0bf5409ac0",
+    "semantic_hash": "33264a495a8b0eb089f93d0bf5409ac0"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\test_agent_manager.py": {
+    "mtime": 1781205130.659793,
+    "ast_hash": "c06f68b122f8374759a852c10dcafe50",
+    "semantic_hash": "c06f68b122f8374759a852c10dcafe50"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\test_attachments.py": {
+    "mtime": 1781205130.6795175,
+    "ast_hash": "b3520e42219a1742a2b2a1ea41948b1f",
+    "semantic_hash": "b3520e42219a1742a2b2a1ea41948b1f"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\test_base_client.py": {
+    "mtime": 1781205130.7049377,
+    "ast_hash": "f4ba5e64e1980f0d83c2de34611f6cf5",
+    "semantic_hash": "f4ba5e64e1980f0d83c2de34611f6cf5"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\test_clicker_engine.py": {
+    "mtime": 1781205130.7235293,
+    "ast_hash": "84852a428fc5d72d8f26151fb7b30905",
+    "semantic_hash": "84852a428fc5d72d8f26151fb7b30905"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\test_compactor.py": {
+    "mtime": 1781205130.74475,
+    "ast_hash": "1ed332f12565913f1401fcbf15bf19ca",
+    "semantic_hash": "1ed332f12565913f1401fcbf15bf19ca"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\test_doom_detector.py": {
+    "mtime": 1781205130.7681441,
+    "ast_hash": "5b33ade013648a08da2ab4b93abe53c3",
+    "semantic_hash": "5b33ade013648a08da2ab4b93abe53c3"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\test_error_handler.py": {
+    "mtime": 1781205130.786412,
+    "ast_hash": "32f211b3551f66e69afe33beec3c80fa",
+    "semantic_hash": "32f211b3551f66e69afe33beec3c80fa"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\test_file_encoder.py": {
+    "mtime": 1781205130.8173704,
+    "ast_hash": "7b0276cc443215e0395b702e976df61b",
+    "semantic_hash": "7b0276cc443215e0395b702e976df61b"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\test_permissions.py": {
+    "mtime": 1781205130.8382454,
+    "ast_hash": "e4b081d1c0d8d3780885b34df16b64ae",
+    "semantic_hash": "e4b081d1c0d8d3780885b34df16b64ae"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\test_safety.py": {
+    "mtime": 1781205130.856598,
+    "ast_hash": "a2d503f5a1ad17c61e44f00b32f724cd",
+    "semantic_hash": "a2d503f5a1ad17c61e44f00b32f724cd"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\test_sub_agent.py": {
+    "mtime": 1781205130.8912036,
+    "ast_hash": "b2f11192bde12ff589a705bb10cbdaa3",
+    "semantic_hash": "b2f11192bde12ff589a705bb10cbdaa3"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\test_thinking_panel.py": {
+    "mtime": 1781205130.912005,
+    "ast_hash": "3bf841c76a04f555e098d45874e40d17",
+    "semantic_hash": "3bf841c76a04f555e098d45874e40d17"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\test_tool_registry.py": {
+    "mtime": 1781205130.9338102,
+    "ast_hash": "73b32e184847d2218705f0e113922bee",
+    "semantic_hash": "73b32e184847d2218705f0e113922bee"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\tests\\test_user_input_extraction.py": {
+    "mtime": 1781189332.8918314,
+    "ast_hash": "4edffa8df10c01e79be93e11ef7ffbbe",
+    "semantic_hash": "4edffa8df10c01e79be93e11ef7ffbbe"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\__init__.py": {
+    "mtime": 1781189332.6465507,
+    "ast_hash": "05aba91a215f47fa07d970b89d75ba67",
+    "semantic_hash": "05aba91a215f47fa07d970b89d75ba67"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\__main__.py": {
+    "mtime": 1781205128.3280334,
+    "ast_hash": "7be34c320720f5c37a5237c93e464852",
+    "semantic_hash": "7be34c320720f5c37a5237c93e464852"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\app.py": {
+    "mtime": 1781205128.2936535,
+    "ast_hash": "c00857d12e9ce4dfa0a5a2e5d4423264",
+    "semantic_hash": "c00857d12e9ce4dfa0a5a2e5d4423264"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\attachments\\__init__.py": {
+    "mtime": 1781205128.3722894,
+    "ast_hash": "48f63503a1f8d4611393501999668f4d",
+    "semantic_hash": "48f63503a1f8d4611393501999668f4d"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\attachments\\file_manager.py": {
+    "mtime": 1781189332.653554,
+    "ast_hash": "c9e7cee6dfdbe9fd53c6ab546e61e654",
+    "semantic_hash": "c9e7cee6dfdbe9fd53c6ab546e61e654"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\auth\\__init__.py": {
+    "mtime": 1781205128.4154198,
+    "ast_hash": "7d0d519adea01dc877ea83a0d5351285",
+    "semantic_hash": "7d0d519adea01dc877ea83a0d5351285"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\auth\\provider_config.py": {
+    "mtime": 1781205128.3996203,
+    "ast_hash": "62dcbfa4101d7e696a16e41b1ef3f742",
+    "semantic_hash": "62dcbfa4101d7e696a16e41b1ef3f742"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\config\\__init__.py": {
+    "mtime": 1781205128.48391,
+    "ast_hash": "2a385cc5ead34474b26ac135722650c1",
+    "semantic_hash": "2a385cc5ead34474b26ac135722650c1"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\config\\defaults.py": {
+    "mtime": 1781205128.4439862,
+    "ast_hash": "a6b884a86f94783ccc502fad00e10c38",
+    "semantic_hash": "a6b884a86f94783ccc502fad00e10c38"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\config\\settings.py": {
+    "mtime": 1781205128.4652262,
+    "ast_hash": "437830f894f6c90fa6ac27dc6413b59e",
+    "semantic_hash": "437830f894f6c90fa6ac27dc6413b59e"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\__init__.py": {
+    "mtime": 1781205129.0149257,
+    "ast_hash": "7007d05dd4d9d8f12913189e873063f8",
+    "semantic_hash": "7007d05dd4d9d8f12913189e873063f8"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\_base_client.py": {
+    "mtime": 1781205128.991507,
+    "ast_hash": "ce1a2c848346edec3827d4feb0239ac5",
+    "semantic_hash": "ce1a2c848346edec3827d4feb0239ac5"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\agent_manager\\__init__.py": {
+    "mtime": 1781205129.22251,
+    "ast_hash": "25e713f3649a7da820b21d73ea52f00e",
+    "semantic_hash": "25e713f3649a7da820b21d73ea52f00e"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\agent_manager\\agent_manager.py": {
+    "mtime": 1781205129.052242,
+    "ast_hash": "c23e2b1e6cba44c27b5d0a752500e5ac",
+    "semantic_hash": "c23e2b1e6cba44c27b5d0a752500e5ac"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\agent_manager\\agent_worker.py": {
+    "mtime": 1781205129.0825255,
+    "ast_hash": "1b7164acec271fe3273915ee4ef6dec9",
+    "semantic_hash": "1b7164acec271fe3273915ee4ef6dec9"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\agent_manager\\doom_detector.py": {
+    "mtime": 1781189332.6797101,
+    "ast_hash": "4286fe428d870b1a8d88f5018f69e059",
+    "semantic_hash": "4286fe428d870b1a8d88f5018f69e059"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\agent_manager\\permission_system.py": {
+    "mtime": 1781205129.1382704,
+    "ast_hash": "4166271a24801f57a929e5513f9fab6a",
+    "semantic_hash": "4166271a24801f57a929e5513f9fab6a"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\agent_manager\\session_compactor.py": {
+    "mtime": 1781205129.167501,
+    "ast_hash": "0a60a222845da0472f9ae91b83347e6e",
+    "semantic_hash": "0a60a222845da0472f9ae91b83347e6e"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\agent_manager\\sub_agent_delegator.py": {
+    "mtime": 1781205129.200593,
+    "ast_hash": "c291c5cf9a904a4a8c74e667022f67b8",
+    "semantic_hash": "c291c5cf9a904a4a8c74e667022f67b8"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\api_client.py": {
+    "mtime": 1781205128.5194783,
+    "ast_hash": "358b7947fdee6590767adbccb81364eb",
+    "semantic_hash": "358b7947fdee6590767adbccb81364eb"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\auto_template_extractor.py": {
+    "mtime": 1781205128.5500965,
+    "ast_hash": "4c6fedbd92fb48832b09f79172455678",
+    "semantic_hash": "4c6fedbd92fb48832b09f79172455678"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\behavior_tracker.py": {
+    "mtime": 1781205128.5807722,
+    "ast_hash": "6b4c5dd895d2176fa77e7c0f12956a25",
+    "semantic_hash": "6b4c5dd895d2176fa77e7c0f12956a25"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\clickers\\__init__.py": {
+    "mtime": 1781205129.272619,
+    "ast_hash": "d93ce43996e43286818581999379ddec",
+    "semantic_hash": "d93ce43996e43286818581999379ddec"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\clickers\\engine.py": {
+    "mtime": 1781205129.2506683,
+    "ast_hash": "a28e605aa51ac002df7d8bb703ee1f9a",
+    "semantic_hash": "a28e605aa51ac002df7d8bb703ee1f9a"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\clickers\\strategies\\__init__.py": {
+    "mtime": 1781205129.3576653,
+    "ast_hash": "d740ba1e179bc6ca799782eb433ea8ac",
+    "semantic_hash": "d740ba1e179bc6ca799782eb433ea8ac"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\clickers\\strategies\\local_vision.py": {
+    "mtime": 1781205129.2974565,
+    "ast_hash": "863b541554c8cf6f4bbdc35666a8c3c8",
+    "semantic_hash": "863b541554c8cf6f4bbdc35666a8c3c8"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\clickers\\strategies\\template.py": {
+    "mtime": 1781205129.3174942,
+    "ast_hash": "2507e0bd934bf16c6e989442e1f7a4c3",
+    "semantic_hash": "2507e0bd934bf16c6e989442e1f7a4c3"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\clickers\\strategies\\vision_api.py": {
+    "mtime": 1781205129.3407328,
+    "ast_hash": "16015169a74fb4fae4d19ccbdc3ecd9c",
+    "semantic_hash": "16015169a74fb4fae4d19ccbdc3ecd9c"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\command_registry.py": {
+    "mtime": 1781189332.7064269,
+    "ast_hash": "a07bdf518865f60b9965b4a91758d0fe",
+    "semantic_hash": "a07bdf518865f60b9965b4a91758d0fe"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\default_prompt.py": {
+    "mtime": 1781189332.7089753,
+    "ast_hash": "e7f7e887bd67880289e81e879e80fb46",
+    "semantic_hash": "e7f7e887bd67880289e81e879e80fb46"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\enhanced_executor.py": {
+    "mtime": 1781205128.6962042,
+    "ast_hash": "d3e5c6c621e2c125a77193863eb740f1",
+    "semantic_hash": "d3e5c6c621e2c125a77193863eb740f1"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\memory_manager.py": {
+    "mtime": 1781205128.7247586,
+    "ast_hash": "aa6ccfab81ec87c0541c6f840a56d9d4",
+    "semantic_hash": "aa6ccfab81ec87c0541c6f840a56d9d4"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\models.py": {
+    "mtime": 1781205128.7491136,
+    "ast_hash": "7b1f0bcb5eab216d14c16b7a1db559ed",
+    "semantic_hash": "7b1f0bcb5eab216d14c16b7a1db559ed"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\opencv_detector.py": {
+    "mtime": 1781189332.7159941,
+    "ast_hash": "008e340f8b38e21e861dd06258caecb0",
+    "semantic_hash": "008e340f8b38e21e861dd06258caecb0"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\perfect_clicker.py": {
+    "mtime": 1781205128.7999332,
+    "ast_hash": "96ab66e8ef98a0c29d4e1bbc857f0913",
+    "semantic_hash": "96ab66e8ef98a0c29d4e1bbc857f0913"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\perfect_clicker\\__init__.py": {
+    "mtime": 1781189332.7195683,
+    "ast_hash": "5420c1d294fa5fbe4c904c0153137353",
+    "semantic_hash": "5420c1d294fa5fbe4c904c0153137353"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\perfect_clicker\\calibrator.py": {
+    "mtime": 1781205129.3791983,
+    "ast_hash": "93c90f5a6495eb73d2ca29f3664bb1d7",
+    "semantic_hash": "93c90f5a6495eb73d2ca29f3664bb1d7"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\perfect_clicker\\clicker.py": {
+    "mtime": 1781205129.441022,
+    "ast_hash": "18839e1f59d918ecc0b2263095669335",
+    "semantic_hash": "18839e1f59d918ecc0b2263095669335"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\pyautogui_executor\\__init__.py": {
+    "mtime": 1781189332.7260811,
+    "ast_hash": "80ea6119764ac200940d229563d9c374",
+    "semantic_hash": "80ea6119764ac200940d229563d9c374"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\pyautogui_executor\\executor.py": {
+    "mtime": 1781205129.493711,
+    "ast_hash": "a1d836ac327b66cf27eec989751f073c",
+    "semantic_hash": "a1d836ac327b66cf27eec989751f073c"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\pyautogui_executor\\response_parser.py": {
+    "mtime": 1781205129.5136087,
+    "ast_hash": "79dc2c0caa92796a099ec882675938cd",
+    "semantic_hash": "79dc2c0caa92796a099ec882675938cd"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\pyautogui_executor\\template_matcher.py": {
+    "mtime": 1781189332.7320898,
+    "ast_hash": "9d9ee1103947fdb2ed7cbacd00d9eeb7",
+    "semantic_hash": "9d9ee1103947fdb2ed7cbacd00d9eeb7"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\session_service.py": {
+    "mtime": 1781205128.8408124,
+    "ast_hash": "327e6547b979400fde7fbd96f5a9be9c",
+    "semantic_hash": "327e6547b979400fde7fbd96f5a9be9c"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\task_decomposer.py": {
+    "mtime": 1781189332.7350786,
+    "ast_hash": "e59099d07703c110ed20569369fd12cc",
+    "semantic_hash": "e59099d07703c110ed20569369fd12cc"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\thinking_filter.py": {
+    "mtime": 1781189332.7376451,
+    "ast_hash": "08c491215ca3e884c833af437aa01086",
+    "semantic_hash": "08c491215ca3e884c833af437aa01086"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\tool_executor\\__init__.py": {
+    "mtime": 1781189332.7396662,
+    "ast_hash": "139e514f77b2827805c736aeb6c40b5b",
+    "semantic_hash": "139e514f77b2827805c736aeb6c40b5b"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\tool_executor\\_file_ops.py": {
+    "mtime": 1781189332.74219,
+    "ast_hash": "6a17dcb5e627afbcab14bbe0523e4384",
+    "semantic_hash": "6a17dcb5e627afbcab14bbe0523e4384"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\tool_executor\\_shell_ops.py": {
+    "mtime": 1781189332.7432044,
+    "ast_hash": "762cb55d9bc448c7fbfcdce3b767a564",
+    "semantic_hash": "762cb55d9bc448c7fbfcdce3b767a564"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\tool_executor\\_tool_defs.py": {
+    "mtime": 1781189332.7452047,
+    "ast_hash": "5e710b0dee989b73d209e6a8f9e3d226",
+    "semantic_hash": "5e710b0dee989b73d209e6a8f9e3d226"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\tool_executor\\executor.py": {
+    "mtime": 1781189332.7462091,
+    "ast_hash": "d94a10162fae6bc4bfa866043535dcc4",
+    "semantic_hash": "d94a10162fae6bc4bfa866043535dcc4"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\tool_registry\\__init__.py": {
+    "mtime": 1781205129.7445264,
+    "ast_hash": "15947be20ab73b3256b40ec8bcea2a8f",
+    "semantic_hash": "15947be20ab73b3256b40ec8bcea2a8f"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\tool_registry\\base_tool.py": {
+    "mtime": 1781189332.7501986,
+    "ast_hash": "031cfc9389f8d287005bff83b82d9c70",
+    "semantic_hash": "031cfc9389f8d287005bff83b82d9c70"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\tool_registry\\registry.py": {
+    "mtime": 1781205129.7281823,
+    "ast_hash": "a71fab0522cacc3f6aa107d1c7ac8ee5",
+    "semantic_hash": "a71fab0522cacc3f6aa107d1c7ac8ee5"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\tool_registry\\tools\\__init__.py": {
+    "mtime": 1781189332.756315,
+    "ast_hash": "8150951f80de73420c6483442ef84046",
+    "semantic_hash": "8150951f80de73420c6483442ef84046"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\tool_registry\\tools\\file_tools.py": {
+    "mtime": 1781205129.7685587,
+    "ast_hash": "4b5c28c7b1e87119ee19f1e5b360432f",
+    "semantic_hash": "4b5c28c7b1e87119ee19f1e5b360432f"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\tool_registry\\tools\\terminal.py": {
+    "mtime": 1781205129.7903538,
+    "ast_hash": "c48755c01bb4a018e499cf92b7e67544",
+    "semantic_hash": "c48755c01bb4a018e499cf92b7e67544"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\tool_registry\\tools\\voice_tools.py": {
+    "mtime": 1781205129.8078663,
+    "ast_hash": "6b4621b63326523003118b01faeb4018",
+    "semantic_hash": "6b4621b63326523003118b01faeb4018"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\tool_registry\\tools\\web_fetch.py": {
+    "mtime": 1781205129.8270967,
+    "ast_hash": "bd6ee28b4a08c6a52c4b59bed69d0f7b",
+    "semantic_hash": "bd6ee28b4a08c6a52c4b59bed69d0f7b"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\tool_registry\\tools\\web_search.py": {
+    "mtime": 1781205129.846533,
+    "ast_hash": "f329f585678fbb03886bdfc8c867cf4e",
+    "semantic_hash": "f329f585678fbb03886bdfc8c867cf4e"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\uied_service\\__init__.py": {
+    "mtime": 1781205129.942213,
+    "ast_hash": "57191c82d3668e8015509a852a1122bc",
+    "semantic_hash": "57191c82d3668e8015509a852a1122bc"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\uied_service\\detection_worker.py": {
+    "mtime": 1781189332.7698898,
+    "ast_hash": "1f308577de0d4606c922341f179f23ae",
+    "semantic_hash": "1f308577de0d4606c922341f179f23ae"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\uied_service\\models.py": {
+    "mtime": 1781189332.7728882,
+    "ast_hash": "3a9471a0ca7237c383355f66cd8428ba",
+    "semantic_hash": "3a9471a0ca7237c383355f66cd8428ba"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\uied_service\\service.py": {
+    "mtime": 1781205129.9249744,
+    "ast_hash": "423c1459ca381c93cef026c213f6c431",
+    "semantic_hash": "423c1459ca381c93cef026c213f6c431"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\vision_capture.py": {
+    "mtime": 1781189332.7764256,
+    "ast_hash": "6dee83b2e700b2c3b22f652558d4f03f",
+    "semantic_hash": "6dee83b2e700b2c3b22f652558d4f03f"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\core\\zen_client.py": {
+    "mtime": 1781205128.9610906,
+    "ast_hash": "21e988612e5e9e4f6d3ae8ec30794ec3",
+    "semantic_hash": "21e988612e5e9e4f6d3ae8ec30794ec3"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\resources\\__init__.py": {
+    "mtime": 1781189332.7806828,
+    "ast_hash": "a90971f4e9f0a083721307b4016b15fb",
+    "semantic_hash": "a90971f4e9f0a083721307b4016b15fb"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\__init__.py": {
+    "mtime": 1781205130.0320072,
+    "ast_hash": "ef2d053ad1204886820e008cd2698976",
+    "semantic_hash": "ef2d053ad1204886820e008cd2698976"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\assistant\\__init__.py": {
+    "mtime": 1781205130.2290282,
+    "ast_hash": "fea6fa03430e542fd506cc3699f2b422",
+    "semantic_hash": "fea6fa03430e542fd506cc3699f2b422"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\assistant\\chat_popup.py": {
+    "mtime": 1781205130.0580688,
+    "ast_hash": "b74e50eaea7860eb7584de9eaa42aba5",
+    "semantic_hash": "b74e50eaea7860eb7584de9eaa42aba5"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\assistant\\controller.py": {
+    "mtime": 1781205130.082218,
+    "ast_hash": "ec66a48acca1956a461388b40618855d",
+    "semantic_hash": "ec66a48acca1956a461388b40618855d"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\assistant\\message_bubble.py": {
+    "mtime": 1781189332.7983856,
+    "ast_hash": "2753f93e133dea07f9e6fbf2461e35e0",
+    "semantic_hash": "2753f93e133dea07f9e6fbf2461e35e0"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\assistant\\thinking_panel.py": {
+    "mtime": 1781189332.8003821,
+    "ast_hash": "5817956d19295d7f7849c0ffedfc0f5b",
+    "semantic_hash": "5817956d19295d7f7849c0ffedfc0f5b"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\assistant\\uied_handler.py": {
+    "mtime": 1781205130.1514056,
+    "ast_hash": "520ae173733e9769e419db95e637b5fc",
+    "semantic_hash": "520ae173733e9769e419db95e637b5fc"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\assistant\\vision_handler.py": {
+    "mtime": 1781205130.1863008,
+    "ast_hash": "0eab772e4b46bdd37e5089cf01856ed1",
+    "semantic_hash": "0eab772e4b46bdd37e5089cf01856ed1"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\assistant\\worker.py": {
+    "mtime": 1781205130.2098744,
+    "ast_hash": "02945d21abddd3fb54b0795a37fe8117",
+    "semantic_hash": "02945d21abddd3fb54b0795a37fe8117"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\components\\__init__.py": {
+    "mtime": 1781189332.8101277,
+    "ast_hash": "70d1d6d61a750042b6bc069d0731d19a",
+    "semantic_hash": "70d1d6d61a750042b6bc069d0731d19a"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\components\\attach_button.py": {
+    "mtime": 1781189332.811377,
+    "ast_hash": "d994118edc0867f9698e2d1dcc648349",
+    "semantic_hash": "d994118edc0867f9698e2d1dcc648349"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\components\\base_button.py": {
+    "mtime": 1781189332.8123696,
+    "ast_hash": "73144c1e599ce68b60aa5a7a71a426d4",
+    "semantic_hash": "73144c1e599ce68b60aa5a7a71a426d4"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\components\\results_panel.py": {
+    "mtime": 1781189332.8143682,
+    "ast_hash": "20338fe1802e5893076b6ff20fd93243",
+    "semantic_hash": "20338fe1802e5893076b6ff20fd93243"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\components\\send_button.py": {
+    "mtime": 1781189332.8153725,
+    "ast_hash": "b969d922bd1b76ae542dd223475eeb93",
+    "semantic_hash": "b969d922bd1b76ae542dd223475eeb93"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\components\\settings_button.py": {
+    "mtime": 1781189332.8163707,
+    "ast_hash": "f54c336388dcbde5f6e9625adae861c1",
+    "semantic_hash": "f54c336388dcbde5f6e9625adae861c1"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\components\\uied_button.py": {
+    "mtime": 1781189332.8189256,
+    "ast_hash": "8497d919da135ae9ea2394033b948cd3",
+    "semantic_hash": "8497d919da135ae9ea2394033b948cd3"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\components\\vision_button.py": {
+    "mtime": 1781189332.8199294,
+    "ast_hash": "71d5228166819db10d7e50fd4bf3f9e0",
+    "semantic_hash": "71d5228166819db10d7e50fd4bf3f9e0"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\floating_assistant.py": {
+    "mtime": 1781205129.97559,
+    "ast_hash": "903f9f7e746077fd48d5c49ceafcd402",
+    "semantic_hash": "903f9f7e746077fd48d5c49ceafcd402"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\settings_dialog.py": {
+    "mtime": 1781205129.9991105,
+    "ast_hash": "0a60ec9d6dfa10dac6cf76fa9b78500c",
+    "semantic_hash": "0a60ec9d6dfa10dac6cf76fa9b78500c"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\uied_overlay.py": {
+    "mtime": 1781205130.015224,
+    "ast_hash": "f2ad32427381dc6163e078a47b2ef5c6",
+    "semantic_hash": "f2ad32427381dc6163e078a47b2ef5c6"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\uied_overlay\\__init__.py": {
+    "mtime": 1781205130.4395604,
+    "ast_hash": "b248a8ad2e5230a6d86fa758fea35e7c",
+    "semantic_hash": "b248a8ad2e5230a6d86fa758fea35e7c"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\uied_overlay\\label_editor.py": {
+    "mtime": 1781189332.8287125,
+    "ast_hash": "e54a6e0822287ee75caaf6d31ffa1a6b",
+    "semantic_hash": "e54a6e0822287ee75caaf6d31ffa1a6b"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\uied_overlay\\overlay.py": {
+    "mtime": 1781189332.8312075,
+    "ast_hash": "c46241d2d72a22afff3b563e326c5391",
+    "semantic_hash": "c46241d2d72a22afff3b563e326c5391"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\uied_overlay\\toolbar.py": {
+    "mtime": 1781189332.8332028,
+    "ast_hash": "f9718025955aa8e34a1e01500c79602a",
+    "semantic_hash": "f9718025955aa8e34a1e01500c79602a"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\utils\\__init__.py": {
+    "mtime": 1781205130.5861297,
+    "ast_hash": "041201bcdf6579fb5c32633e869d0b92",
+    "semantic_hash": "041201bcdf6579fb5c32633e869d0b92"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\utils\\error_handler.py": {
+    "mtime": 1781205130.4686596,
+    "ast_hash": "a398dbf0b3b589e2065beb91b672f2a4",
+    "semantic_hash": "a398dbf0b3b589e2065beb91b672f2a4"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\utils\\file_encoder.py": {
+    "mtime": 1781205130.4867537,
+    "ast_hash": "35c5a104bb7d9a9885f484a4ee2125ad",
+    "semantic_hash": "35c5a104bb7d9a9885f484a4ee2125ad"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\utils\\logger.py": {
+    "mtime": 1781205130.505558,
+    "ast_hash": "4c0f4fa8c3c7ca4a58e75c75c077abca",
+    "semantic_hash": "4c0f4fa8c3c7ca4a58e75c75c077abca"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\utils\\platform.py": {
+    "mtime": 1781189332.841398,
+    "ast_hash": "2f535e16575e8f7ed19698d98f641d1a",
+    "semantic_hash": "2f535e16575e8f7ed19698d98f641d1a"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\utils\\safety.py": {
+    "mtime": 1781189332.842983,
+    "ast_hash": "9ebefb56e9adf9c655406ef11e2de897",
+    "semantic_hash": "9ebefb56e9adf9c655406ef11e2de897"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\utils\\screen.py": {
+    "mtime": 1781189332.8449638,
+    "ast_hash": "a4935116a38e798fd84f9cc8a560d84b",
+    "semantic_hash": "a4935116a38e798fd84f9cc8a560d84b"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\.planning\\REVIEW.md": {
+    "mtime": 1781189332.626175,
+    "ast_hash": "c045a09a9a7aaa80601b4dfcb30babb6",
+    "semantic_hash": "c045a09a9a7aaa80601b4dfcb30babb6"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\CHANGELOG.md": {
+    "mtime": 1781205127.813711,
+    "ast_hash": "ea7397779b9f5a5aeabf13176f1781e6",
+    "semantic_hash": "ea7397779b9f5a5aeabf13176f1781e6"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\OPencode_Zen_Auth_VDA.md": {
+    "mtime": 1781205127.8956673,
+    "ast_hash": "061ec8abe1365069b3137d6d750b2e01",
+    "semantic_hash": "061ec8abe1365069b3137d6d750b2e01"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\README.md": {
+    "mtime": 1781205127.9827902,
+    "ast_hash": "1538032ed4df643cd2db201e16109be9",
+    "semantic_hash": "1538032ed4df643cd2db201e16109be9"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\docs\\DEVELOPMENT.md": {
+    "mtime": 1781205128.1316109,
+    "ast_hash": "79053b994bf9d06011572ed591a73f14",
+    "semantic_hash": "79053b994bf9d06011572ed591a73f14"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\docs\\PLATFORM_TESTING.md": {
+    "mtime": 1781205128.155794,
+    "ast_hash": "f76bf1e96b61da1dd58990c71506cdb6",
+    "semantic_hash": "f76bf1e96b61da1dd58990c71506cdb6"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\docs\\RELEASE-0.4.0.md": {
+    "mtime": 1781205128.1839688,
+    "ast_hash": "2fcb2d5456299651f1d590ff5644bcde",
+    "semantic_hash": "2fcb2d5456299651f1d590ff5644bcde"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\docs\\STATE_UIED.md": {
+    "mtime": 1781189332.637984,
+    "ast_hash": "94d147ce07ab835cf50b4f214b493efa",
+    "semantic_hash": "94d147ce07ab835cf50b4f214b493efa"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\docs\\UIED_FEATURE.md": {
+    "mtime": 1781205128.2225702,
+    "ast_hash": "3448ad5524079ae2d9c38c67501021da",
+    "semantic_hash": "3448ad5524079ae2d9c38c67501021da"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\docs\\UIED_VISION_PROMPT.md": {
+    "mtime": 1781205128.246663,
+    "ast_hash": "c962da98c0a706b4daeb2a4622876043",
+    "semantic_hash": "c962da98c0a706b4daeb2a4622876043"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\docs\\USER_GUIDE.md": {
+    "mtime": 1781205128.269114,
+    "ast_hash": "98fb32297bd45d0b1596d3e7b60593e1",
+    "semantic_hash": "98fb32297bd45d0b1596d3e7b60593e1"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\error.txt": {
+    "mtime": 1781189332.643583,
+    "ast_hash": "1eebf45192ef81bc68fb4474790ecbf5",
+    "semantic_hash": "1eebf45192ef81bc68fb4474790ecbf5"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\react_source.txt": {
+    "mtime": 1781205127.9580395,
+    "ast_hash": "e84999fc16e7e17c8bcf96cdcaed2364",
+    "semantic_hash": "e84999fc16e7e17c8bcf96cdcaed2364"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\requirements-dev.txt": {
+    "mtime": 1781189332.8489778,
+    "ast_hash": "41d79c54b0f62bbbf8a2ceaa11022433",
+    "semantic_hash": "41d79c54b0f62bbbf8a2ceaa11022433"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\requirements.txt": {
+    "mtime": 1781189332.8509743,
+    "ast_hash": "402c4263a6a50e110050097c0b4d9f4a",
+    "semantic_hash": "402c4263a6a50e110050097c0b4d9f4a"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\skills\\desktop_skill.md": {
+    "mtime": 1781189332.8564956,
+    "ast_hash": "dff37a6db8af9f658fd1dbabda459f2c",
+    "semantic_hash": "dff37a6db8af9f658fd1dbabda459f2c"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\test_output_utf8.txt": {
+    "mtime": 1781205128.0980618,
+    "ast_hash": "e5e412e6b6442e3402189b363200bb95",
+    "semantic_hash": "e5e412e6b6442e3402189b363200bb95"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\resources\\icons\\attach.svg": {
+    "mtime": 1781189332.7816648,
+    "ast_hash": "b6a06eaff1376fde59197ad98a159c50",
+    "semantic_hash": "b6a06eaff1376fde59197ad98a159c50"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\resources\\icons\\send.svg": {
+    "mtime": 1781189332.782657,
+    "ast_hash": "6e39ec67dcf1705796a5808c8ed24e6d",
+    "semantic_hash": "6e39ec67dcf1705796a5808c8ed24e6d"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\resources\\icons\\settings.svg": {
+    "mtime": 1781189332.784657,
+    "ast_hash": "f4069da5a4456eee15bc0ebb0576b424",
+    "semantic_hash": "f4069da5a4456eee15bc0ebb0576b424"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\resources\\icons\\vision.svg": {
+    "mtime": 1781189332.785674,
+    "ast_hash": "9ff90e6c1554ab4316f8376993004921",
+    "semantic_hash": "9ff90e6c1554ab4316f8376993004921"
+  },
+  "C:\\Users\\uscha\\OneDrive\\Desktop\\vda\\VDA\\vda-desktop\\vda\\ui\\assets\\star.svg": {
+    "mtime": 1781189332.7903104,
+    "ast_hash": "9f8c33f2662b6e09c34f49d981aa49ca",
+    "semantic_hash": "9f8c33f2662b6e09c34f49d981aa49ca"
+  }
+}
