@@ -59,3 +59,7 @@ desktop.ini
 .planning/STATE.md
 *.db
 config.json
+.opencode/
+*.db
+*.db-shm
+*.db-wal
