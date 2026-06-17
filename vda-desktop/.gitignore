@@ -63,3 +63,8 @@ config.json
 *.db
 *.db-shm
 *.db-wal
+
+# opencode engine
+opencode-engine/
+*.exe
+
