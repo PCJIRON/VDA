@@ -242,16 +242,21 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.WindowStaysOnTopHint |
-            Qt.WindowType.SubWindow
+            Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.resize(64, 68)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self.resize(64, 64)
 
+        # Position at bottom-right of primary screen
         screen = QApplication.primaryScreen().availableGeometry()
-        target_x = screen.x() + screen.width() - 104
-        target_y = screen.y() + screen.height() - 104
+        target_x = screen.x() + screen.width() - 80
+        target_y = screen.y() + screen.height() - 80
         self.move(target_x, target_y)
+        # Make sure it's above all other windows
+        self.raise_()
+        self.activateWindow()
 
         self.thinking_panel = ThinkingPanel()
 
@@ -300,6 +305,7 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
+        self.raise_()
         screen_geom = QApplication.primaryScreen().availableGeometry()
         new_x = max(screen_geom.x(), min(self.x(), screen_geom.x() + screen_geom.width() - self.width()))
         new_y = max(screen_geom.y(), min(self.y(), screen_geom.y() + screen_geom.height() - self.height()))
@@ -368,15 +374,8 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
     def _setup_ui(self):
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.setSpacing(4)
+        self.main_layout.setSpacing(0)
         self.main_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-
-        # ChatPanel (appears above the widget when visible)
-        self.chat_panel = ChatPanel()
-        self.chat_panel.setVisible(False)
-        self.chat_panel.close_requested.connect(self.toggle_chat)
-        self.chat_panel.new_chat_requested.connect(self.start_new_session)
-        self.main_layout.addWidget(self.chat_panel, alignment=Qt.AlignmentFlag.AlignRight)
 
         # FloatingWidget (pill-shaped input bar)
         self.floating_widget = FloatingWidget()
@@ -385,7 +384,13 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self.floating_widget.voice_requested.connect(self.toggle_voice)
         self.floating_widget.vision_requested.connect(self.toggle_vision)
         self.floating_widget.crop_requested.connect(self.trigger_uied_detection)
-        self.main_layout.addWidget(self.floating_widget, alignment=Qt.AlignmentFlag.AlignRight)
+        self.main_layout.addWidget(self.floating_widget)
+
+        # ChatPanel - NOT in layout, positioned as popup above the widget
+        self.chat_panel = ChatPanel(self)
+        self.chat_panel.setVisible(False)
+        self.chat_panel.close_requested.connect(self.toggle_chat)
+        self.chat_panel.new_chat_requested.connect(self.start_new_session)
 
         self._chat_visible = False
 
@@ -407,11 +412,30 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self.context_menu.addAction(quit_act)
 
     def toggle_chat(self):
-        """Show/hide the chat panel below the floating widget."""
+        """Show/hide the chat panel above the floating widget."""
         self._chat_visible = not self._chat_visible
         self.chat_panel.setVisible(self._chat_visible)
-        h = 540 if self._chat_visible else 68
-        self.setFixedHeight(h)
+        if self._chat_visible:
+            self._position_chat_panel()
+        self.raise_()
+
+    def _position_chat_panel(self):
+        """Position the ChatPanel as a popup above the floating widget."""
+        screen = QApplication.primaryScreen().availableGeometry()
+        panel_w = self.chat_panel.WIDTH
+        panel_h = self.chat_panel.HEIGHT
+
+        # Center above the widget
+        cx = self.x() + self.floating_widget.width() // 2
+        px = cx - panel_w // 2
+        # Show above the window
+        py = self.y() - panel_h - 12
+
+        # Clamp to screen
+        px = max(screen.left() + 4, min(px, screen.right() - panel_w - 4))
+        py = max(screen.top() + 4, py)
+
+        self.chat_panel.move(px, py)
 
     def toggle_voice(self):
         self.history_popup.add_message("Voice Input is currently simulated.", "ai")
