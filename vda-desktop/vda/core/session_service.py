@@ -157,3 +157,11 @@ class SessionService:
         self.db.execute(update_query, (now, session_id))
 
         return msg_uuid
+
+    def add_session_cost(self, session_id: str, cost: float) -> None:
+        """Add cost to a session (used for sub-agent cost propagation)."""
+        now = int(time.time())
+        self.db.execute(
+            "UPDATE sessions SET cost = cost + ?, updated_at = ? WHERE id = ?",
+            (cost, now, session_id),
+        )

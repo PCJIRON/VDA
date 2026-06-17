@@ -12,7 +12,10 @@ via their @register_tool decorators.
 # Import all tool modules to trigger @register_tool decorators
 from . import (
     agent,  # noqa: F401
+    code_intel,  # noqa: F401
+    file_edit,  # noqa: F401
     file_tools,  # noqa: F401
+    patch_tool,  # noqa: F401
     terminal,  # noqa: F401
     voice_tools,  # noqa: F401
     web_fetch,  # noqa: F401

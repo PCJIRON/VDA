@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 
 from vda.auth.provider_config import ProviderConfig
+from vda.config.defaults import PROVIDERS
 from vda.config.settings import Settings
 from vda.core.default_prompt import build_system_prompt
 
@@ -254,6 +255,234 @@ class BaseClient(ABC):
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
         return payload
+
+    # --- Native function calling support (opencode style) ---
+
+    @staticmethod
+    def tool_defs_to_openai_format(tool_defs: list[dict]) -> list[dict]:
+        """Normalize tool definitions to OpenAI-compatible format.
+
+        Accepts both flat format (tool registry raw) and already-wrapped
+        format (from get_definitions() which already includes type/function).
+        OpenAI format:
+            [{"type": "function", "function": {"name": ..., "description": ..., "parameters": ...}}]
+        """
+        result = []
+        for td in tool_defs:
+            # Already wrapped with "type": "function" (e.g. from get_definitions())
+            if "function" in td:
+                result.append(td)
+                continue
+            # Flat format — wrap it
+            params = td.get("parameters", {"type": "object", "properties": {}})
+            result.append({
+                "type": "function",
+                "function": {
+                    "name": td["name"],
+                    "description": td.get("description", ""),
+                    "parameters": params,
+                },
+            })
+        return result
+
+    def supports_tool_calling(self) -> bool:
+        """Check if the current provider natively supports function calling (tool_calls)."""
+        provider_id = self._config.get_provider_id()
+        provider_info = PROVIDERS.get(provider_id, {})
+        return provider_info.get("tool_calling_supported", False)
+
+    async def chat_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        model: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+    ) -> AsyncGenerator[dict, None]:
+        """Send messages with OpenAI-compatible tool definitions.
+
+        Yields event dicts:
+            {"type": "text", "content": "..."} — text delta from the model
+            {"type": "tool_call", "id": "...", "name": "...", "arguments": {...}}
+            {"type": "error", "content": "..."}
+        """
+        model = model or self._config.get_model()
+        provider_name = self._config.get_provider_name()
+        openai_tools = self.tool_defs_to_openai_format(tools)
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "temperature": 0.7,
+            "tools": openai_tools,
+        }
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+
+        client = self._get_or_create_client()
+
+        async for event in self._stream_with_retry_tools(client, payload, provider_name):
+            yield event
+
+    async def _stream_with_retry_tools(
+        self,
+        client: httpx.AsyncClient,
+        payload: dict,
+        provider_name: str,
+    ) -> AsyncGenerator[dict, None]:
+        """POST /chat/completions with tools payload, parse SSE for tool_calls + text.
+
+        Retries on 429 with exponential backoff (same as _stream_with_retry).
+        """
+        rl = self._get_rate_limit_config()
+        max_retries = rl.get("max_retries", 3)
+        base_backoff = rl.get("base_backoff", 1.0)
+
+        for attempt in range(max_retries + 1):
+            await self._rate_limit_delay()
+
+            try:
+                async with client.stream("POST", "/chat/completions", json=payload) as response:
+                    if response.status_code == 429:
+                        retry_after = response.headers.get("retry-after")
+                        if retry_after:
+                            try:
+                                wait_time = float(retry_after)
+                            except ValueError:
+                                wait_time = base_backoff * (2 ** attempt)
+                        else:
+                            wait_time = base_backoff * (2 ** attempt)
+                        await response.aread()
+                        if attempt < max_retries:
+                            logger.warning(
+                                "[RateLimit] 429 from %s (attempt %d/%d). Retrying in %.1fs...",
+                                provider_name, attempt + 1, max_retries + 1, wait_time,
+                            )
+                            await asyncio.sleep(wait_time)
+                            continue
+                        else:
+                            yield {"type": "error", "content": self._handle_429_error(provider_name, wait_time)}
+                            return
+
+                    if response.status_code != 200:
+                        error_text = await response.aread()
+                        logger.error("%s API error %d: %s", provider_name, response.status_code, error_text)
+                        yield {"type": "error", "content": self._handle_stream_error(response, provider_name)}
+                        return
+
+                    async for event in self._parse_sse_stream_tools(response):
+                        yield event
+                    return
+
+            except httpx.TimeoutException:
+                yield {"type": "error", "content": "Error: Request timed out."}
+                return
+            except Exception as e:
+                logger.error("%s API error: %s", provider_name, e, exc_info=True)
+                yield {"type": "error", "content": f"Error: {e}"}
+                return
+
+        yield {"type": "error", "content": "Error: Rate limit exceeded after all retries."}
+
+    async def _parse_sse_stream_tools(self, response: httpx.Response) -> AsyncGenerator[dict, None]:
+        """SSE stream parser that detects delta.tool_calls and accumulates arguments.
+
+        Yields:
+            {"type": "text", "content": "..."} per text delta
+            {"type": "tool_call", "id": "...", "name": "...", "arguments": {...}} when complete
+        """
+        tool_call_accums: dict[int, dict] = {}
+
+        async for line in response.aiter_lines():
+            if not line.startswith("data: "):
+                continue
+            data_str = line[6:].strip()
+            if data_str == "[DONE]":
+                break
+            try:
+                data = json.loads(data_str)
+                choices = data.get("choices", [])
+                if not choices:
+                    usage = data.get("usage")
+                    if usage:
+                        yield {
+                            "type": "usage",
+                            "prompt_tokens": usage.get("prompt_tokens", 0),
+                            "completion_tokens": usage.get("completion_tokens", 0),
+                        }
+                    continue
+
+                delta = choices[0].get("delta", {})
+                finish_reason = choices[0].get("finish_reason")
+
+                # Text content
+                content = delta.get("content", "")
+                if content:
+                    yield {"type": "text", "content": content}
+
+                # Reasoning content
+                reasoning = delta.get("reasoning_content") or delta.get("reasoning_details")
+                if reasoning:
+                    if isinstance(reasoning, list):
+                        for r in reasoning:
+                            if isinstance(r, dict):
+                                t = r.get("text", "")
+                                if t:
+                                    yield {"type": "text", "content": f"<think>{t}</think>"}
+                    elif isinstance(reasoning, str):
+                        yield {"type": "text", "content": f"<think>{reasoning}</think>"}
+
+                # Tool calls (streaming — accumulate by index)
+                tool_calls = delta.get("tool_calls", [])
+                for tc in tool_calls:
+                    idx = tc.get("index", 0)
+                    if idx not in tool_call_accums:
+                        tool_call_accums[idx] = {"id": "", "name": "", "arguments_chunks": []}
+                    accum = tool_call_accums[idx]
+                    if "id" in tc and tc["id"]:
+                        accum["id"] = tc["id"]
+                    if "function" in tc:
+                        fn = tc["function"]
+                        if "name" in fn and fn["name"]:
+                            accum["name"] = fn["name"]
+                        if "arguments" in fn and fn["arguments"] is not None:
+                            accum["arguments_chunks"].append(fn["arguments"])
+
+                # On finish_reason == "tool_calls", emit all accumulated tool calls
+                if finish_reason == "tool_calls" and tool_call_accums:
+                    for idx in sorted(tool_call_accums.keys()):
+                        accum = tool_call_accums[idx]
+                        raw = "".join(accum["arguments_chunks"])
+                        try:
+                            parsed_args = json.loads(raw) if raw else {}
+                        except json.JSONDecodeError:
+                            parsed_args = {"_raw": raw}
+                        yield {
+                            "type": "tool_call",
+                            "id": accum["id"],
+                            "name": accum["name"],
+                            "arguments": parsed_args,
+                        }
+                    tool_call_accums.clear()
+
+            except json.JSONDecodeError:
+                continue
+
+        # Flush any remaining accumulated tool calls (for providers that don't set finish_reason)
+        if tool_call_accums:
+            for idx in sorted(tool_call_accums.keys()):
+                accum = tool_call_accums[idx]
+                raw = "".join(accum["arguments_chunks"])
+                try:
+                    parsed_args = json.loads(raw) if raw else {}
+                except json.JSONDecodeError:
+                    parsed_args = {"_raw": raw}
+                yield {
+                    "type": "tool_call",
+                    "id": accum["id"],
+                    "name": accum["name"],
+                    "arguments": parsed_args,
+                }
 
     async def _parse_sse_stream(self, response: httpx.Response, provider_name: str) -> AsyncGenerator[str, None]:
         async for line in response.aiter_lines():

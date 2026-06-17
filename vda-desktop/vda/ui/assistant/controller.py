@@ -15,8 +15,10 @@ from PyQt6.QtCore import (
     QRect,
     QRectF,
     Qt,
+    QThread,
     QTimer,
     QVariantAnimation,
+    pyqtSignal,
 )
 from PyQt6.QtGui import QAction, QBrush, QColor, QCursor, QPainter, QPen, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
@@ -62,6 +64,103 @@ UI_AUTOMATION_SUPPORTED = os.name == "nt"
 auto = None
 
 logger = logging.getLogger(__name__)
+
+
+class AgentDWorker(QThread):
+    """Minimal QThread that runs the opencode Go agent and emits streaming events.
+
+    Used for non-vision (text-only) agent tasks. Signals replace the
+    full AgentWorker signal set with a simpler one since agentd handles
+    tool execution internally.
+
+    Signals:
+        text_delta: Streaming text content from the agent.
+        tool_call: (tool_name, tool_input)
+        tool_result: (tool_name, content, is_error)
+        finished: (final content string)
+        error_occurred: (error message)
+    """
+
+    text_delta = pyqtSignal(str)
+    tool_call = pyqtSignal(str, str)
+    tool_result = pyqtSignal(str, str, bool)
+    finished = pyqtSignal(str)
+    error_occurred = pyqtSignal(str)
+
+    def __init__(
+        self,
+        task: str,
+        provider: str,
+        model: str,
+        api_key: str,
+        base_url: str,
+        working_dir: str = "",
+        system_prompt: str = "",
+    ) -> None:
+        super().__init__()
+        self._task = task
+        self._provider = provider
+        self._model = model
+        self._api_key = api_key
+        self._base_url = base_url
+        self._working_dir = working_dir or os.path.expanduser("~")
+        self._system_prompt = system_prompt
+
+    def run(self) -> None:
+        from vda.opencode_bridge import run_agentd
+
+        full_content = ""
+        try:
+            for event in run_agentd(
+                task=self._task,
+                provider=self._provider,
+                model=self._model,
+                api_key=self._api_key,
+                base_url=self._base_url,
+                working_dir=self._working_dir,
+                system_prompt=self._system_prompt,
+            ):
+                etype = event.get("type", "")
+                if etype == "text":
+                    delta = event.get("content", "")
+                    if delta:
+                        self.text_delta.emit(delta)
+                        full_content += delta
+                elif etype == "tool_call":
+                    self.tool_call.emit(
+                        event.get("tool_name", ""),
+                        event.get("tool_input", ""),
+                    )
+                elif etype == "tool_result":
+                    self.tool_result.emit(
+                        event.get("tool_name", ""),
+                        event.get("tool_result", ""),
+                        event.get("is_error", False),
+                    )
+                elif etype == "error":
+                    self.error_occurred.emit(event.get("content", "Unknown error"))
+                elif etype == "done":
+                    content = event.get("content", "")
+                    if content and content != full_content:
+                        delta = content[len(full_content):] if content.startswith(full_content) else content
+                        self.text_delta.emit(delta)
+                        full_content = content
+                    self.finished.emit(full_content)
+                    return
+
+            # If we exited without a done event, emit finished with whatever we have
+            if not self.isInterruptionRequested():
+                self.finished.emit(full_content)
+        except Exception as e:
+            logger.error("[AgentDWorker] Error: %s", e, exc_info=True)
+            self.error_occurred.emit(str(e))
+
+
+VDA_SYSTEM_PROMPT = """You are VDA (Voice-Driven Desktop Agent), a desktop AI assistant powered by the OpenCode engine. You control the computer to accomplish tasks — you can search files, edit files, run commands, browse the web, and more.
+
+Your goal is to understand what the user wants and use your tools to make it happen. Be thorough and precise. When you're not sure about something, use your tools to investigate rather than guessing.
+
+You operate anywhere on the user's system, not just inside a specific project folder."""
 
 
 class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
@@ -1063,6 +1162,11 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
             self._launch_direct_llm(api_client, user_input, prompted_history, vision_mode=False)
             return self.worker
 
+        # Non-vision text tasks → use opencode Go agent directly
+        if not vision_mode:
+            logger.info("[Worker] Non-vision task -> routing to opencode agentd: %s", user_input[:60])
+            return self._launch_agentd_worker(user_input)
+
         # Build AgentManager and wrap it in AgentWorker for step‑by‑step UI updates
         # Inject a screenshot callable so the agent can grab a fresh
         # screenshot on every PLAN iteration (re-plan-per-step design).
@@ -1093,6 +1197,7 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
         worker.doom_loop_detected.connect(self.thinking_panel.show_doom_loop)
         worker.permission_required.connect(self.thinking_panel.show_permission_request)
         worker.tool_executed.connect(self._on_tool_executed)
+        worker.subagent_activity.connect(self._on_subagent_step)
         worker.error_occurred.connect(self._on_api_error)
         # When agent finishes, format results. If results are empty, fall back to direct LLM call.
         # Build a clean history for the fallback that contains the user's original text (not the vision payload)
@@ -1117,7 +1222,10 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
             return
 
         # Legacy fallback if it's a list or dict with just raw results
-        results = final_output.get("results") if isinstance(final_output, dict) else final_output
+        if isinstance(final_output, dict):
+            results = final_output.get("results")
+        else:
+            results = final_output
         formatted = self._format_results(results)
         if formatted:
             self._on_api_finished(formatted)
@@ -1154,6 +1262,55 @@ The coordinates in `target` must be absolute pixel coordinates [x, y] on {sw}x{s
             status = f"Using {tool_name}... {status_icon}"
 
         self.history_popup.set_thinking_status(status)
+
+    def _on_subagent_step(self, tool_name: str, args: dict, status: str, detail: str):
+        """Show sub-agent activity in the ThinkingPanel and header status."""
+        if status == "started":
+            if tool_name == "web_search":
+                query = args.get("query", "")
+                label = f"🔍 Sub: {query[:40]}"
+            elif tool_name == "web_fetch":
+                url = args.get("url", "")
+                label = f"📄 Sub: {url[:40]}"
+            else:
+                label = f"⚙ Sub: {tool_name}"
+            self.thinking_panel.add_step(label, f"Sub-agent using {tool_name}")
+            self.history_popup.set_thinking_status(label)
+        elif status == "completed":
+            self.history_popup.set_thinking_status(f"✅ Sub-agent step done")
+        elif status == "failed":
+            self.history_popup.set_thinking_status(f"❌ Sub-agent step failed")
+
+    def _launch_agentd_worker(self, user_input: str):
+        """Launch opencode Go agent for non-vision text tasks.
+
+        Creates AgentDWorker, connects signals to UI, and starts it.
+        Uses home directory as global scope so tools can access
+        the entire desktop, not just the VDA project folder.
+        """
+        provider_cfg = ProviderConfig(self.settings)
+        worker = AgentDWorker(
+            task=user_input,
+            provider=provider_cfg.get_provider_id(),
+            model=self.settings.get("api_model", ""),
+            api_key=provider_cfg.get_api_key(),
+            base_url=provider_cfg.get_base_url(),
+            working_dir=os.path.expanduser("~"),
+            system_prompt=VDA_SYSTEM_PROMPT,
+        )
+        self._set_stop_mode()
+        self.history_popup.add_message("", "ai")
+        self.history_popup.set_thinking_status("Thinking...")
+        worker.text_delta.connect(self._on_api_chunk)
+        worker.tool_call.connect(lambda name, inp: self.thinking_panel.add_step(name, inp[:100]))
+        worker.tool_result.connect(lambda name, content, err: self.thinking_panel.update_step(
+            name, "error" if err else "success", content[:200],
+        ))
+        worker.error_occurred.connect(self._on_api_error)
+        worker.finished.connect(self._on_api_finished)
+        worker.start()
+        self.worker = worker
+        return worker
 
     def _launch_direct_llm(self, api_client, user_text, history, vision_mode):
         """Start a direct APIServerWorker as a fallback (no agent loop).

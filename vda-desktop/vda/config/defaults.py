@@ -2,6 +2,7 @@ PROVIDERS = {
     "opencode": {
         "name": "OpenCode Zen",
         "base_url": "https://opencode.ai/zen/v1",
+        "tool_calling_supported": True,
         "allow_anonymous": True,
         "models": [
             "deepseek-v4-flash",
@@ -50,6 +51,7 @@ PROVIDERS = {
     "deepseek": {
         "name": "DeepSeek",
         "base_url": "https://api.deepseek.com",
+        "tool_calling_supported": True,
         "models": [
             "deepseek-v4-flash",
             "deepseek-v4-pro",
@@ -65,6 +67,7 @@ PROVIDERS = {
     "openrouter": {
         "name": "OpenRouter",
         "base_url": "https://openrouter.ai/api/v1",
+        "tool_calling_supported": True,
         "models": [
             "deepseek/deepseek-v4-flash",
             "deepseek/deepseek-v4-pro",
@@ -99,6 +102,7 @@ PROVIDERS = {
     "nvidia": {
         "name": "NVIDIA NIM",
         "base_url": "https://integrate.api.nvidia.com/v1",
+        "tool_calling_supported": True,
         "models": [
             "nvidia/llama-3.3-nemotron-super-49b-v1",
             "nvidia/nemotron-3-super-120b-a12b",
@@ -124,6 +128,7 @@ PROVIDERS = {
     "gemini": {
         "name": "Google Gemini",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "tool_calling_supported": True,
         "models": [
             "gemini-3.5-flash",
             "gemini-3.1-flash-lite",
@@ -142,6 +147,7 @@ PROVIDERS = {
     "custom": {
         "name": "Custom (OpenAI-Compatible)",
         "base_url": "",
+        "tool_calling_supported": True,
         "models": [],
         "rate_limit": {
             "min_request_interval": 1.0,
@@ -192,6 +198,8 @@ AGENT_TYPES: dict[str, dict] = {
         "tools": [
             "web_search", "web_fetch", "terminal",
             "file_read", "file_write", "file_glob", "file_grep",
+            "file_edit", "dir_list",
+            "patch", "diagnostics", "sourcegraph",
             "voice",
         ],
         "permission_defaults": {

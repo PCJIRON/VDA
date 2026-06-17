@@ -209,9 +209,11 @@ class PermissionSystem:
         """
         read_tools = {
             "file_read", "file_glob", "file_grep",
+            "dir_list",
+            "diagnostics", "sourcegraph",
             "web_search", "web_fetch",
         }
-        mutation_tools = {"terminal", "file_write", "voice"}
+        mutation_tools = {"terminal", "file_write", "file_edit", "patch", "voice"}
 
         if tool_name in read_tools:
             return "read"

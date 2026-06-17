@@ -29,6 +29,7 @@ from typing import Any, Callable, Optional
 from vda.config.defaults import PROVIDERS
 from vda.core.agent_manager.doom_detector import DoomLoopDetector
 from vda.core.agent_manager.permission_system import PermissionSystem
+from vda.core.agent_manager.session_compactor import SessionCompactor
 from vda.core.default_prompt import build_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -123,13 +124,29 @@ class AgentManager:
         # Subsystems
         self.doom_detector = DoomLoopDetector()
         self.permission_system = PermissionSystem(settings)
+        self.compactor = SessionCompactor(
+            api_client=api_client,
+            threshold=settings.get("compaction_threshold", 0.8) if (hasattr(settings, "get") if settings else False) else 0.8,
+            max_tokens=settings.get("compaction_max_tokens", 128000) if (hasattr(settings, "get") if settings else False) else 128000,
+        )
+
+        # Session & cost tracking (matches opencode's session hierarchy + cost propagation)
+        self.session_service: Optional[Any] = None
+        self._session_id: Optional[str] = None
+        self.agent_type: str = "main"
+        self.total_prompt_tokens: int = 0
+        self.total_completion_tokens: int = 0
+        self.total_cost: float = 0.0
 
         # Internal state
+        self._on_step: Optional[Callable] = None  # callback for sub-agent step reporting
         self._error: Optional[str] = None
         self._paused_reason: Optional[str] = None
         self._sift_verify_data: Optional[dict[str, Any]] = None
         self._user_input: str = ""
         self._context: str = ""
+        self._compacted_context: str = ""  # filled by SessionCompactor on overflow
+        self._model_tier: str = "standard"  # "standard", "free", "claude", "gemini"
 
         # State dispatch table
         self._handlers = {
@@ -161,6 +178,7 @@ class AgentManager:
         self._context = ""
         self.doom_detector.clear()
         self.permission_system.clear_cache()
+        self.compactor.reset()
         logger.info("[AgentManager] Reset to IDLE")
 
     async def run_to_completion_async(self) -> str:
@@ -182,6 +200,10 @@ class AgentManager:
                 tool_name = step_dict.get("tool")
                 args = step_dict.get("args", {})
 
+                # Report step to parent UI via callback
+                if self._on_step:
+                    self._on_step(tool_name, args, "started")
+
                 try:
                     tool = self.tool_registry.get_tool(tool_name)
                     if not tool:
@@ -191,6 +213,14 @@ class AgentManager:
                         result = f"Error: Tool '{tool_name}' has no execute method."
                         success = False
                     else:
+                        # Inject session context for sub-agent tool
+                        if hasattr(tool, "api_client"):
+                            tool.api_client = self.api_client
+                        if hasattr(tool, "session_service"):
+                            tool.session_service = self.session_service
+                        if hasattr(tool, "parent_session_id"):
+                            tool.parent_session_id = self._session_id
+
                         import inspect
                         if inspect.iscoroutinefunction(tool.execute):
                             result = await tool.execute(**args)
@@ -203,6 +233,10 @@ class AgentManager:
                     success = False
 
                 self.record_step_outcome(step_dict, result, success)
+
+                # Report completion to parent UI
+                if self._on_step:
+                    self._on_step(tool_name, args, "completed" if success else "failed", result[:200])
 
         if self.state == AgentState.ERROR:
             return f"Error: {self._error}"
@@ -385,10 +419,17 @@ class AgentManager:
            - parse failure → safe fallback action (return description only)
         """
         if self.iteration_count >= self.max_iterations:
-            self.state = AgentState.ERROR
-            self._error = f"Max iterations ({self.max_iterations}) exceeded"
-            logger.error("[AgentManager] %s", self._error)
-            return self.state, {"event": "max_iterations_exceeded"}
+            self.last_summary = self._synthesize_loop_summary()
+            self.state = AgentState.COMPLETE
+            logger.warning("[AgentManager] Max iterations (%s) — force-completing with gathered data", self.max_iterations)
+            return self.state, {"event": "plan_done", "summary": self.last_summary}
+
+        # Force-complete if stuck in a read-only loop (same tools, no progress)
+        if self._is_stuck_in_readonly_loop():
+            self.last_summary = self._synthesize_loop_summary()
+            self.state = AgentState.COMPLETE
+            logger.warning("[AgentManager] Read-only loop detected — force-completing with gathered data")
+            return self.state, {"event": "plan_done", "summary": self.last_summary}
 
         self.iteration_count += 1
 
@@ -417,6 +458,24 @@ class AgentManager:
                 except Exception as e:
                     logger.warning(f"Failed to read skills file: {e}")
 
+        model_id = ""
+        if self.settings:
+            if hasattr(self.settings, "get"):
+                model_id = self.settings.get("model", "")
+            elif isinstance(self.settings, dict):
+                model_id = self.settings.get("model", "")
+
+        # Detect model tier for per-model parsing tuning
+        mid = model_id.lower()
+        if any(tag in mid for tag in ("free", "mimo", "minimax", "nemotron")):
+            self._model_tier = "free"
+        elif "claude" in mid:
+            self._model_tier = "claude"
+        elif "gemini" in mid:
+            self._model_tier = "gemini"
+        else:
+            self._model_tier = "standard"
+
         if self.vision_mode:
             try:
                 sw, sh = self._get_screen_size()
@@ -429,9 +488,15 @@ class AgentManager:
                 components=self.components,
                 vision_mode=True,
                 skills_content=skills_content,
+                agent_type=self.agent_type,
+                model_id=model_id,
             )
 
             user_text = self._build_user_prompt(history_block)
+
+            bg_results_block = self._check_background_tasks()
+            if bg_results_block:
+                user_text += bg_results_block
 
             if screenshot_b64:
                 user_content = [
@@ -446,19 +511,47 @@ class AgentManager:
             else:
                 user_content = user_text
         else:
-            # Normal Mode: no screenshots, use text prompt
-            tool_defs = self.tool_registry.get_definitions(agent_type="main")
-            system_prompt = build_system_prompt(
-                vision_mode=False,
-                skills_content=skills_content,
-                text_agent=True,
-                tool_definitions=tool_defs,
-            )
-            user_content = (
-                f"USER TASK: {self._user_input}\n\n"
-                f"STEPS COMPLETED SO FAR:\n{history_block}\n\n"
-                "Decide the NEXT single action by calling a tool, or reply done: true if complete."
-            )
+            # Normal/Sub-agent mode: no screenshots, use text prompt
+            tool_defs = self.tool_registry.get_definitions(agent_type=self.agent_type)
+
+            # Check if this provider supports native OpenAI-compatible function calling
+            uses_native_tc = hasattr(self.api_client, "supports_tool_calling") and self.api_client.supports_tool_calling()
+
+            if uses_native_tc:
+                # Native tool calling mode (opencode-style): tools defined via API
+                system_prompt = build_system_prompt(
+                    vision_mode=False,
+                    skills_content=skills_content,
+                    text_agent=True,
+                    tool_definitions=tool_defs,
+                    agent_type=self.agent_type,
+                    model_id=model_id,
+                    native_tool_calling=True,
+                )
+                bg_results_block = self._check_background_tasks()
+                user_content = (
+                    f"USER TASK: {self._user_input}\n\n"
+                    f"STEPS COMPLETED SO FAR:\n{history_block}"
+                    f"{bg_results_block}"
+                )
+            else:
+                # JSON-in-text mode (fallback for providers without native tool calling)
+                system_prompt = build_system_prompt(
+                    vision_mode=False,
+                    skills_content=skills_content,
+                    text_agent=self.agent_type == "main",
+                    tool_definitions=tool_defs,
+                    agent_type=self.agent_type,
+                    model_id=model_id,
+                    native_tool_calling=False,
+                )
+                bg_results_block = self._check_background_tasks()
+                user_content = (
+                    f"USER TASK: {self._user_input}\n\n"
+                    f"STEPS COMPLETED SO FAR:\n{history_block}\n\n"
+                    "Reply with a JSON tool call or {\"done\": true, \"summary\": \"...\"} if complete."
+                    f"{bg_results_block}"
+                )
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -466,69 +559,149 @@ class AgentManager:
         ]
 
         # 3. ONE LLM call for decide + verify (the next screenshot IS the verify)
-        # Use chat(messages) so the full messages list (system + user with
-        # image) is preserved correctly. send_message(message, history)
-        # would treat our full list as the user text and nest the system
-        # prompt inside the user content (a bug we hit on minimax-m3-free).
         full_response = ""
-        try:
-            async for chunk in self.api_client.chat(messages):
-                full_response += chunk
-        except AttributeError:
-            # Fallback for clients that only have send_message: pass the
-            # user content only and let the client inject the system prompt.
-            async for chunk in self.api_client.send_message(user_content, []):
-                full_response += chunk
-        except Exception as e:
-            logger.error("[AgentManager] LLM call failed: %s", e, exc_info=True)
-            self.state = AgentState.ERROR
-            self._error = f"LLM call failed: {e}"
-            return self.state, {"event": "error", "message": self._error}
+        prompt_text = json.dumps(messages)
 
-        # 4. Parse the response
-        action = self._parse_action_response(full_response)
+        if not self.vision_mode and uses_native_tc:
+            # Native tool calling path (opencode-style)
+            tool_calls_received = []
+            try:
+                async for event in self.api_client.chat_with_tools(messages, tool_defs):
+                    if event["type"] == "text":
+                        full_response += event["content"]
+                    elif event["type"] == "tool_call":
+                        tool_calls_received.append(event)
+                    elif event["type"] == "error":
+                        full_response += event["content"]
+            except AttributeError:
+                # Fallback: api_client doesn't have chat_with_tools
+                async for chunk in self.api_client.send_message(user_content, []):
+                    full_response += chunk
+            except Exception as e:
+                logger.error("[AgentManager] LLM call failed: %s", e, exc_info=True)
+                self.state = AgentState.ERROR
+                self._error = f"LLM call failed: {e}"
+                return self.state, {"event": "error", "message": self._error}
 
-        # 5a. Done? → COMPLETE
-        if action.get("done") is True:
-            self.last_summary = action.get("summary", "Task completed")
-            self.state = AgentState.COMPLETE
-            self.results.append({
-                "step": "summary",
-                "tool": "done",
-                "result": self.last_summary,
-                "index": len(self.completed_steps),
-            })
-            logger.info(
-                "[AgentManager] LLM declared task done: %s", self.last_summary
-            )
-            return self.state, {
-                "event": "plan_done",
-                "summary": self.last_summary,
-            }
+            # Track estimated token usage
+            self._track_usage(prompt_text, full_response)
 
-        # 5b. Next action → wrap in a single-step plan
-        # If in normal mode, the action has {"tool": "tool_name", "args": {...}, "description": "..."}
-        if self.vision_mode:
-            tool_name = "vision"
-            step_desc = action.get("description", "next action")
-            args = action
+            if tool_calls_received:
+                # Build plan from native tool calls
+                plan = []
+                for tc in tool_calls_received:
+                    tool_name = tc["name"]
+                    step_desc = f"native_call: {tool_name}"
+                    args = tc["arguments"]
+                    plan.append({
+                        "step": step_desc,
+                        "tool": tool_name,
+                        "args": args,
+                    })
+
+                self.plan = plan
+                self.current_step = 0
+                self.state = AgentState.EXECUTE
+                logger.info(
+                    "[AgentManager] Native tool calls: %s",
+                    [p["tool"] for p in plan],
+                )
+                return self.state, {"event": "plan_created", "plan": self.plan}
+
+            # No tool calls — check if text contains done signal or is a real response
+            actions = self._parse_action_response(full_response)
+            for action in actions:
+                if action.get("done") is True:
+                    self.last_summary = action.get("summary", "Task completed") or full_response.strip()
+                    self.state = AgentState.COMPLETE
+                    self.results.append({
+                        "step": "summary",
+                        "tool": "done",
+                        "result": self.last_summary,
+                        "index": len(self.completed_steps),
+                    })
+                    logger.info("[AgentManager] LLM declared task done: %s", self.last_summary)
+                    return self.state, {"event": "plan_done", "summary": self.last_summary}
+
+            # Text response with no tool calls and no done — treat as simple task complete
+            if full_response.strip():
+                self.last_summary = full_response.strip()
+                self.state = AgentState.COMPLETE
+                self.results.append({
+                    "step": "summary",
+                    "tool": "done",
+                    "result": self.last_summary,
+                    "index": len(self.completed_steps),
+                })
+                logger.info("[AgentManager] Text-only response — task done: %s", self.last_summary[:80])
+                return self.state, {"event": "plan_done", "summary": self.last_summary}
         else:
-            tool_name = action.get("tool", "")
-            step_desc = action.get("description", "next action")
-            args = action.get("args", {})
+            # JSON-in-text path (vision mode or fallback for non-tool-calling providers)
+            try:
+                if self.vision_mode:
+                    async for chunk in self.api_client.chat(messages):
+                        full_response += chunk
+                else:
+                    async for chunk in self.api_client.chat(messages):
+                        full_response += chunk
+            except AttributeError:
+                if isinstance(user_content, str):
+                    async for chunk in self.api_client.send_message(user_content, []):
+                        full_response += chunk
+                else:
+                    async for chunk in self.api_client.send_message("", []):
+                        full_response += chunk
+            except Exception as e:
+                logger.error("[AgentManager] LLM call failed: %s", e, exc_info=True)
+                self.state = AgentState.ERROR
+                self._error = f"LLM call failed: {e}"
+                return self.state, {"event": "error", "message": self._error}
 
-        self.plan = [{
-            "step": step_desc,
-            "tool": tool_name,
-            "args": args,
-        }]
-        self.current_step = 0
-        self.state = AgentState.EXECUTE
+            # Track estimated token usage
+            self._track_usage(prompt_text, full_response)
+
+            # Parse JSON from text (existing logic)
+            actions = self._parse_action_response(full_response)
+
+            # Check if ANY action declares done
+            for action in actions:
+                if action.get("done") is True:
+                    self.last_summary = action.get("summary", "Task completed")
+                    self.state = AgentState.COMPLETE
+                    self.results.append({
+                        "step": "summary",
+                        "tool": "done",
+                        "result": self.last_summary,
+                        "index": len(self.completed_steps),
+                    })
+                    logger.info("[AgentManager] LLM declared task done: %s", self.last_summary)
+                    return self.state, {"event": "plan_done", "summary": self.last_summary}
+
+            # Build multi-step plan from all actions
+            plan = []
+            for action in actions:
+                if self.vision_mode:
+                    tool_name = "vision"
+                    step_desc = action.get("description", "next action")
+                    args = action
+                else:
+                    tool_name = action.get("tool", "")
+                    step_desc = action.get("description", "next action")
+                    args = action.get("args", {})
+                plan.append({
+                    "step": step_desc,
+                    "tool": tool_name,
+                    "args": args,
+                })
+
+            self.plan = plan
+            self.current_step = 0
+            self.state = AgentState.EXECUTE
         logger.info(
-            "[AgentManager] Plan step %d: %s (tool: %s)",
+            "[AgentManager] Plan has %d step(s) (iteration %d): %s",
+            len(plan),
             self.iteration_count,
-            step_desc,
-            tool_name,
+            [p["step"] for p in plan],
         )
         return self.state, {
             "event": "plan_created",
@@ -540,9 +713,9 @@ class AgentManager:
     ) -> tuple[AgentState, Optional[dict[str, Any]]]:
         """Handle EXECUTE state: hand the current step to the worker.
 
-        In the re-plan design, the plan is always length 1. The worker
-        executes the step, appends the result to self.results AND to
-        self.completed_steps (for history), then transitions to VERIFY.
+        In opencode-style execution, the plan may contain multiple steps.
+        The worker executes them one-by-one via record_step_outcome + step()
+        until all steps are consumed, then transitions to VERIFY → PLAN.
         """
         if self.current_step >= len(self.plan):
             # Defensive: shouldn't happen in re-plan design
@@ -593,6 +766,83 @@ class AgentManager:
         error_msg = getattr(self, "_error", "Unknown error")
         return self.state, {"event": "error", "message": error_msg, "error": error_msg}
 
+    def _check_background_tasks(self) -> str:
+        """Check for completed background sub-agent tasks and inject results.
+
+        Reads from AgentTool's module-level _background_results dict.
+        Once read, results are removed so they're only injected once.
+
+        Returns:
+            A formatted string of completed background tasks, or empty string.
+        """
+        try:
+            from vda.core.tool_registry.tools.agent import _background_results as bg_results
+        except ImportError:
+            return ""
+
+        if not bg_results:
+            return ""
+
+        lines = ["\n\n--- COMPLETED BACKGROUND TASKS ---"]
+        task_ids = list(bg_results.keys())
+        for tid in task_ids:
+            result = bg_results.pop(tid, None)
+            if result:
+                lines.append(f'\n<task id="{tid}" state="completed">\n{result}\n</task>')
+
+        return "\n".join(lines)
+
+    def _is_stuck_in_readonly_loop(self) -> bool:
+        """Detect if the agent is stuck re-listing/re-reading the same files.
+
+        Returns True when the last N completed steps only contain read-only
+        tools (file_glob, file_read, dir_list, terminal with list commands)
+        and no write/action tools, indicating the model will never declare done.
+        """
+        read_only_tools = {"file_glob", "file_read", "dir_list"}
+        recent = self.completed_steps[-8:]
+        if len(recent) < 4:
+            return False
+        # All recent steps are read-only
+        for s in recent:
+            action = s.get("action", "")
+            if action not in read_only_tools and "list" not in action.lower() and "glob" not in action.lower():
+                return False
+        # Has done at least one full cycle (same tool used 3+ times with different args)
+        tool_counts: dict[str, int] = {}
+        for s in recent:
+            t = s.get("action", "")
+            tool_counts[t] = tool_counts.get(t, 0) + 1
+        return any(c >= 3 for c in tool_counts.values())
+
+    def _synthesize_loop_summary(self) -> str:
+        """Build a summary from completed steps when the agent can't finish."""
+        read_files = []
+        dirs_explored = set()
+        for s in self.completed_steps:
+            action = s.get("action", "")
+            target = s.get("target_name", "") or ""
+            if action == "file_read" and target:
+                read_files.append(target)
+            elif action == "dir_list" and target:
+                dirs_explored.add(target)
+            elif action == "file_glob" and target:
+                dirs_explored.add(target)
+
+        lines = ["[Auto-summary: agent reached iteration limit]"]
+        if dirs_explored:
+            lines.append("Directories explored:")
+            for d in sorted(dirs_explored):
+                lines.append(f"  - {d}")
+        if read_files:
+            lines.append(f"\nFiles read ({len(read_files)}):")
+            for f in read_files[:15]:
+                lines.append(f"  - {f}")
+            if len(read_files) > 15:
+                lines.append(f"  ... and {len(read_files) - 15} more")
+        lines.append(f"\nTotal steps completed: {len(self.completed_steps)}")
+        return "\n".join(lines)
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -632,30 +882,48 @@ class AgentManager:
     def _format_step_history(self) -> str:
         """Format the completed-steps history for the next LLM prompt.
 
-        Returns a compact, single-line-per-step summary the LLM can scan
-        quickly. Example:
-            1. ✓ clicked Chrome icon at (32, 32) — Chrome opened
-            2. ✗ typed "google.com" — focused on wrong field
-            3. ✓ pressed Tab — moved focus to URL bar
+        Formats each completed step as a structured tool-result block so
+        the LLM can clearly see what was called, what arguments were used,
+        and what was returned. Matches opencode's tool-result style.
+
+        Example:
+            Tool Calls:
+            [1] web_search({"query": "latest AI papers 2026"}) → ✓
+                Result: Found papers on transformers...
+
+            [2] web_fetch({"url": "https://arxiv.org/..."}) → ✗
+                Error: HTTP 500
         """
         if not self.completed_steps:
             return "(none — this is the first step)"
 
         lines = []
+        last_action = None
         for i, s in enumerate(self.completed_steps, start=1):
             mark = "✓" if s.get("success") else "✗"
             action = s.get("action", "?")
-            target = s.get("target_name") or ""
-            x = s.get("x")
-            y = s.get("y")
+            result = (s.get("result") or "")[:200]
 
-            coord_str = f" at ({x},{y})" if x is not None and y is not None else ""
-            result = (s.get("result") or "")[:80]
-            line = f"{i}. {mark} {action}"
+            # Build args summary from the stored step data
+            step_dict = s.get("step", "")
+            target = s.get("target_name", "")
+            x, y = s.get("x"), s.get("y")
+            args_parts = []
             if target:
-                line += f" {target}"
-            line += f"{coord_str} — {result}"
-            lines.append(line)
+                args_parts.append(f'"{target}"')
+            if x is not None and y is not None:
+                args_parts.append(f"({x},{y})")
+            args_summary = f" {''.join(args_parts)}" if args_parts else ""
+
+            # Detect consecutive repeat
+            repeat_note = ""
+            if last_action is not None and action == last_action and not target:
+                repeat_note = " (REPEAT)"
+            last_action = action
+
+            lines.append(f"[{i}] {action}{args_summary} {mark}{repeat_note}")
+            lines.append(f"    Result: {result}")
+
         return "\n".join(lines)
 
     def _build_user_prompt(self, history_block: str) -> str:
@@ -691,9 +959,6 @@ class AgentManager:
             "Decide the NEXT single action, or reply done: true if complete."
         )
 
-    session_service: Optional[Any] = None
-    _session_id: Optional[str] = None
-
     def _get_screen_size(self) -> tuple[int, int]:
         """Return the current screen size in pixels."""
         try:
@@ -703,60 +968,116 @@ class AgentManager:
         except Exception:
             return 1920, 1080
 
-    def _parse_action_response(self, response_text: str) -> dict[str, Any]:
-        """Parse the LLM's JSON response into an action dict."""
+    def _parse_action_response(self, response_text: str) -> list[dict[str, Any]]:
+        """Parse the LLM's JSON response into a list of action dicts.
+
+        Accepts both single JSON objects and JSON arrays — opencode style.
+        Returns a list so callers can build multi-step plans.
+
+        Handles thinking models gracefully: if the entire response is
+        wrapped in <think> tags, the thinking content is preserved and
+        the model is kept in the thinking loop rather than forced to
+        produce a JSON response it hasn't formulated yet.
+        """
         if not response_text or not response_text.strip():
-            return {
+            return [{
                 "action": "wait",
                 "target_name": None,
                 "target": None,
                 "description": "(empty LLM response — try again)",
-            }
+            }]
 
-        # Strip all <think>...</think> tags FIRST so they don't corrupt JSON parsing
         import re
-        clean_text = re.sub(r"<think>.*?</think>", "", response_text, flags=re.DOTALL).strip()
-        if not clean_text:
-            clean_text = response_text # Fallback if everything was stripped
 
-        # 1. Try to find a markdown json block (non-greedy)
-        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean_text, re.DOTALL | re.IGNORECASE)
-        if json_match:
+        # Strip <think> tags and extract thinking content
+        thinking_content = ""
+        think_pattern = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+        clean_text = think_pattern.sub("", response_text).strip()
+
+        # Collect all thinking fragments for context
+        think_fragments = think_pattern.findall(response_text)
+        if think_fragments:
+            thinking_content = " ".join(t.strip() for t in think_fragments if t.strip())
+
+        # If after stripping think tags nothing useful remains, the model
+        # is still in a thinking state. Return a wait action with the
+        # thinking content as description so the model context grows.
+        if not clean_text or not clean_text.strip():
+            context = thinking_content[:300] if thinking_content else "(still thinking)"
+            logger.info(
+                "[AgentManager] LLM returned only thinking tags (%d chars)",
+                len(response_text),
+            )
+            return [{
+                "action": "wait",
+                "target_name": None,
+                "target": None,
+                "description": f"(model thinking: {context})",
+            }]
+
+        # Collect JSON candidates from the text in priority order
+        json_candidates: list[str] = []
+
+        # 1. Markdown code block content
+        code_match = re.search(r"```(?:json)?\s*(.+?)\s*```", clean_text, re.DOTALL | re.IGNORECASE)
+        if code_match:
+            json_candidates.append(code_match.group(1))
+
+        # 2. First { to last } (handles chatty models without markdown)
+        s = clean_text.find("{")
+        e = clean_text.rfind("}")
+        if s != -1 and e != -1 and e > s:
+            json_candidates.append(clean_text[s : e + 1])
+
+        # 3. First [ to last ] (handles json arrays without markdown)
+        s = clean_text.find("[")
+        e = clean_text.rfind("]")
+        if s != -1 and e != -1 and e > s:
+            json_candidates.append(clean_text[s : e + 1])
+
+        for candidate in json_candidates:
             try:
-                parsed = json.loads(json_match.group(1))
+                parsed = json.loads(candidate)
                 if isinstance(parsed, dict):
+                    return [parsed]
+                if isinstance(parsed, list):
                     return parsed
             except json.JSONDecodeError:
-                pass
+                continue
 
-        # 2. Try to find the first { and last } (handles chatty models without markdown)
-        start_idx = clean_text.find('{')
-        end_idx = clean_text.rfind('}')
-        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-            try:
-                parsed = json.loads(clean_text[start_idx:end_idx+1])
-                if isinstance(parsed, dict):
-                    return parsed
-            except json.JSONDecodeError:
-                pass
+        # For free/weak models: try lenient regex-based extraction before giving up
+        if getattr(self, "_model_tier", None) == "free" and clean_text:
+            # Try to extract tool name and args from non-JSON text
+            import re as regex
+            tool_match = regex.search(r'(?:tool|action)[:\s]*["\']?(\w+)["\']?', clean_text, regex.IGNORECASE)
+            done_match = regex.search(r'(?:done|complete|finished)[:\s]*(true|yes)', clean_text, regex.IGNORECASE)
+            if done_match:
+                summary_match = regex.search(r'(?:summary|result)[:\s]*["\'](.+?)["\']', clean_text, regex.DOTALL)
+                return [{
+                    "done": True,
+                    "summary": summary_match.group(1)[:200] if summary_match else clean_text.strip()[:200],
+                }]
+            if tool_match:
+                return [{
+                    "tool": tool_match.group(1),
+                    "args": {},
+                    "description": clean_text.strip()[:100],
+                }]
 
-        # Non-JSON response: treat as a failed parse and wait.
-        # Previously this used a prose heuristic that would falsely mark
-        # tasks as done when the LLM responded with conversational text
-        # instead of JSON. This caused premature task completion.
-
+        # Non-JSON response — include the thinking context in the
+        # wait action so the next PLAN turn has richer context.
+        context = thinking_content[:200] if thinking_content else response_text[:200].strip()
         logger.warning(
-            "[AgentManager] Could not parse JSON from LLM response: %s",
-            response_text[:200],
+            "[AgentManager] Could not parse JSON from LLM response (think=%d chars): %s",
+            len(thinking_content),
+            response_text[:100],
         )
-        # Safe fallback: wait, surface the raw text as description so the
-        # user can see what the model tried to say.
-        return {
+        return [{
             "action": "wait",
             "target_name": None,
             "target": None,
-            "description": response_text[:200].strip() or "(no response)",
-        }
+            "description": context or "(no response)",
+        }]
 
     async def _apply_rate_limit_delay(self) -> None:
         """Enforce minimum delay between consecutive LLM calls.
@@ -792,6 +1113,28 @@ class AgentManager:
 
         self._last_llm_call_time = time.monotonic()
 
+
+    def _track_usage(self, prompt_text: str = "", response_text: str = "", prompt_tokens: int = 0, completion_tokens: int = 0) -> None:
+        """Track token usage from an LLM call.
+
+        Uses real token counts from the API when available (non-zero values),
+        otherwise falls back to a 4-char-per-token estimate.
+
+        Args:
+            prompt_text: The prompt text sent (for fallback estimation).
+            response_text: The response text received (for fallback estimation).
+            prompt_tokens: Real prompt token count from API (0 = use estimate).
+            completion_tokens: Real completion token count from API (0 = use estimate).
+        """
+        if prompt_tokens > 0 and completion_tokens > 0:
+            self.total_prompt_tokens += prompt_tokens
+            self.total_completion_tokens += completion_tokens
+        else:
+            prompt_tokens = len(prompt_text) // 4
+            completion_tokens = len(response_text) // 4
+            self.total_prompt_tokens += prompt_tokens
+            self.total_completion_tokens += completion_tokens
+        self.total_cost += (prompt_tokens * 0.000002) + (completion_tokens * 0.00001)
 
     def pause(self, reason: str) -> None:
         """Pause execution for user intervention (doom loop, permission).

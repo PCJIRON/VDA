@@ -99,3 +99,14 @@ class APIClient(BaseClient):
         history = messages[:-1] if len(messages) > 1 else []
         async for chunk in self.send_message(current_message, history, max_tokens=max_tokens):
             yield chunk
+
+    async def chat_with_tools(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        model: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+    ) -> AsyncGenerator[dict, None]:
+        """Send messages with native tool definitions (delegates to BaseClient)."""
+        async for event in super().chat_with_tools(messages, tools, model=model, max_tokens=max_tokens):
+            yield event

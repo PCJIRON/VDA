@@ -60,6 +60,9 @@ class AgentWorker(QThread):
     # Compaction
     compaction_needed = pyqtSignal(int, int)     # (current_tokens, max_tokens)
 
+    # Sub-agent step visibility (tool_name, args, status, detail)
+    subagent_activity = pyqtSignal(str, dict, str, str)
+
     # Errors
     error_occurred = pyqtSignal(str)
 
@@ -97,11 +100,11 @@ class AgentWorker(QThread):
     async def _run_loop(self) -> None:
         """Main agent loop — drives AgentManager step() until completion.
 
-        Flow per state machine (re-plan-per-step design):
+        Flow per state machine (re-plan-per-step design, opencode-style):
             1. Set state to INIT and call step()
             2. AgentManager transitions INIT → PLAN (1 LLM call + screenshot)
-            3. PLAN returns either done → COMPLETE, or 1-action plan → EXECUTE
-            4. EXECUTE: worker runs the single step via ToolRegistry
+            3. PLAN returns either done → COMPLETE, or multi-step plan → EXECUTE
+            4. EXECUTE: worker runs steps one-by-one via ToolRegistry
             5. VERIFY: no LLM call — just transition back to PLAN (re-plan)
             6. Repeat until COMPLETE or ERROR
         """
@@ -181,8 +184,7 @@ class AgentWorker(QThread):
                 await self._handle_execute_step(output)
 
             elif event == "all_steps_completed":
-                # Should not fire in re-plan design (plan is always 1),
-                # but handle defensively.
+                # All steps in the current plan executed → VERIFY then re-PLAN
                 self.status_changed.emit("verify")
 
             elif event == "verify_replan":
@@ -235,6 +237,22 @@ class AgentWorker(QThread):
         success = False
         try:
             if tool_name != "vision" and tool_name:
+                # Validate required args before calling tool
+                tool_cls = self._agent_manager.tool_registry.get_tool(tool_name) if hasattr(self._agent_manager, "tool_registry") else None
+                if tool_cls and hasattr(tool_cls, "parameters"):
+                    required = tool_cls.parameters.get("required", [])
+                    missing = [r for r in required if r not in args]
+                    if missing:
+                        detail = ", ".join(missing)
+                        result_str = f"The {tool_name} tool was called with invalid arguments: missing required argument(s): {detail}. Please rewrite the input to include all required arguments."
+                        self._agent_manager.results.append({
+                            "step": step, "tool": tool_name,
+                            "error": result_str, "index": output.get("index", 0),
+                        })
+                        self._agent_manager.record_step_outcome(step, result_str, False)
+                        self.step_failed.emit(step_label, result_str)
+                        self.tool_executed.emit(tool_name, args, result_str, False)
+                        return
                 from vda.core.agent_manager.permission_system import PermissionDecision
                 agent_type = getattr(self._agent_manager, "agent_type", "main")
                 decision = self._agent_manager.permission_system.check_permission(
@@ -309,9 +327,19 @@ class AgentWorker(QThread):
             elif tool_name:
                 tool = self._agent_manager.tool_registry.get_tool(tool_name)
                 if tool:
-                    # Inject api_client if the tool needs it (e.g. AgentTool)
+                    # Inject api_client + session context for tools that need it
                     if hasattr(tool, "api_client"):
                         tool.api_client = getattr(self._agent_manager, "api_client", None)
+                    if hasattr(tool, "session_service"):
+                        tool.session_service = getattr(self._agent_manager, "session_service", None)
+                    if hasattr(tool, "parent_session_id"):
+                        tool.parent_session_id = getattr(self._agent_manager, "_session_id", None)
+
+                    # Wire sub-agent step callback for UI visibility
+                    if hasattr(tool, "_on_step"):
+                        tool._on_step = lambda tn, ta, sts, *a: self.subagent_activity.emit(
+                            tn, ta, sts, (a[0] if a else "")
+                        )
 
                     raw_result = await tool.execute(**args)
                     result_str = (
@@ -322,7 +350,8 @@ class AgentWorker(QThread):
                     success = True
                     self.tool_executed.emit(tool_name, args, result_str, True)
                 else:
-                    result_str = f"Tool '{tool_name}' not found"
+                    available = list(self._agent_manager.tool_registry._registry.keys()) if hasattr(self._agent_manager.tool_registry, '_registry') else []
+                    result_str = f"The {tool_name} tool is not available. Available tools: {', '.join(available[:10])}." if available else f"The {tool_name} tool was not found in the tool registry."
                     self.tool_executed.emit(tool_name, args, result_str, False)
                     logger.warning(
                         "[AgentWorker] Tool '%s' not in registry", tool_name
@@ -350,11 +379,22 @@ class AgentWorker(QThread):
             loop_info = self._agent_manager.doom_detector.check_loop()
             if loop_info:
                 args_summary = json.dumps(args)[:100] if args else "{}"
+                logger.warning(
+                    "[AgentWorker] Doom loop detected for '%s' — auto-recovering",
+                    tool_name,
+                )
                 self.doom_loop_detected.emit(tool_name, args_summary)
-                self._agent_manager.pause(f"Doom loop detected: {tool_name}")
-                self._paused = True
-                logger.warning("[AgentWorker] Doom loop detected: %s", tool_name)
-                # Wait — will be resumed by resume_from_doom_loop()
+                # Auto-recover: mark last step as loop failure, clear detector,
+                # and continue to next PLAN iteration (don't pause).
+                if self._agent_manager.completed_steps:
+                    self._agent_manager.completed_steps[-1]["result"] = (
+                        f"(DOOM LOOP — {tool_name} called 3x with same args, "
+                        "auto-recovered)"
+                    )
+                    self._agent_manager.completed_steps[-1]["success"] = False
+                self._agent_manager.doom_detector.clear()
+                self.step_failed.emit(step_label, "Doom loop detected — auto-recovered")
+                self.tool_executed.emit(tool_name, args, "DOOM LOOP AUTORECOVER", False)
                 return
 
             # Success — record_step_outcome already advanced current_step
@@ -381,10 +421,11 @@ class AgentWorker(QThread):
         await self._check_compaction()
 
     async def _check_compaction(self) -> None:
-        """Check if conversation needs compaction and emit signal.
+        """Check if conversation needs compaction and auto-compact.
 
-        Checks the SessionCompactor (if available on the agent manager)
-        to see if token usage exceeds the compaction threshold.
+        Checks the SessionCompactor — if token usage exceeds the threshold,
+        performs LLM-based summarization of older context and stores the
+        result in AgentManager._compacted_context for the next PLAN call.
         """
         try:
             compactor = getattr(self._agent_manager, "compactor", None)
@@ -398,9 +439,28 @@ class AgentWorker(QThread):
                 return
 
             messages = session_service.get_conversation(session_id)
-            if await compactor.needs_compaction(messages):
-                estimated = compactor.estimate_tokens(messages)
-                self.compaction_needed.emit(estimated, compactor.max_tokens)
+            if not await compactor.needs_compaction(messages):
+                return
+
+            estimated = compactor.estimate_tokens(messages)
+            logger.warning(
+                "[AgentWorker] Compaction triggered: %d tokens (%.1f%% of %d)",
+                estimated, (estimated / compactor.max_tokens) * 100, compactor.max_tokens,
+            )
+
+            # Perform actual compaction
+            compacted = await compactor.compact(messages, self._user_input)
+            # Store compacted context for the next PLAN call
+            self._agent_manager._compacted_context = (
+                compacted[0].get("content", "") if compacted else ""
+            )
+
+            # Update session conversation with compacted version
+            if session_service and session_id:
+                session_service.set_conversation(session_id, compacted)
+
+            self.compaction_needed.emit(estimated, compactor.max_tokens)
+
         except Exception as e:
             logger.debug("[AgentWorker] Compaction check skipped: %s", e)
 
