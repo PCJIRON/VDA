@@ -9,21 +9,16 @@ logger = logging.getLogger(__name__)
 class VisionHandlerMixin:
     def toggle_vision(self):
         self.is_vision_enabled = not self.is_vision_enabled
-        self.vision_btn.is_green = self.is_vision_enabled
 
         if self.is_vision_enabled:
-            self.input_field.setPlaceholderText("Vision ON - Describe what to click...")
             self.history_popup.add_message(
                 "Vision mode ON\nDescribe what to interact with on screen.",
                 "ai",
             )
             self._update_vision_status_bar()
         else:
-            self.input_field.setPlaceholderText("Ask AI...")
             self.history_popup.add_message("Vision mode OFF", "ai")
             self._update_vision_status_bar()
-
-        self.update()
 
     def _delayed_vision_start(self):
         if not self.is_vision_enabled:
@@ -31,7 +26,6 @@ class VisionHandlerMixin:
         ok = self._vision_service.start()
         if not ok:
             self.is_vision_enabled = False
-            self.vision_btn.is_green = False
             self.history_popup.add_message(
                 "Vision requires pyautogui + pynput.\n"
                 "Run: pip install pyautogui pynput Pillow",
@@ -111,8 +105,8 @@ class VisionHandlerMixin:
         )
         self.history_popup.add_message("Analyzing...", "ai")
 
-        if not self.is_expanded:
-            self.toggle_expand()
+        if not getattr(self, "_chat_visible", False):
+            self.toggle_chat()
 
         self._update_vision_status_bar()
 

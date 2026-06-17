@@ -52,13 +52,10 @@ from vda.ui.assistant.thinking_panel import ThinkingPanel
 from vda.ui.assistant.uied_handler import UIEDHandlerMixin
 from vda.ui.assistant.vision_handler import VisionHandlerMixin
 from vda.ui.assistant.worker import APIServerWorker
-from vda.ui.components.attach_button import AttachButton
-from vda.ui.components.send_button import SendButton
-from vda.ui.components.settings_button import SettingsButton
-from vda.ui.components.uied_button import UIEDButton
-from vda.ui.components.vision_button import VisionButton
-from vda.ui.components.voice_button import VoiceButton
-from vda.ui.settings_dialog import SettingsDialog
+from vda.ui.components.chat_panel import ChatPanel
+from vda.ui.components.floating_widget import FloatingWidget
+from vda.ui.components.settings_modal import SettingsModal
+from vda.ui.components.stop_button import StopButton
 
 UI_AUTOMATION_SUPPORTED = os.name == "nt"
 auto = None
@@ -163,30 +160,84 @@ Your goal is to understand what the user wants and use your tools to make it hap
 You operate anywhere on the user's system, not just inside a specific project folder."""
 
 
+class _ChatPopupAdapter:
+    """Adapter: wraps ChatPanel + ThinkingPanel with the old ChatHistoryPopup API.
+    Allows vision_handler.py and uied_handler.py to work unchanged.
+    """
+    def __init__(self, chat_panel: ChatPanel, thinking_panel: ThinkingPanel):
+        self._chat = chat_panel
+        self._thinking = thinking_panel
+        self._visible = False
+        self._geometry_rect = None
+
+        # Staging (file attachments) — kept as no-op for backward compat
+        class _StagingScroll:
+            def show(self): pass
+            def hide(self): pass
+        class _StagingLayout:
+            def count(self): return 0
+            def takeAt(self, i): return None
+            def addWidget(self, w): pass
+            def addStretch(self): pass
+        self.staging_scroll = _StagingScroll()
+        self.staging_layout = _StagingLayout()
+        self.close_btn = type("_Btn", (), {"clicked": type("_Sig", (), {"connect": lambda s, fn: None})()})()
+        self.new_chat_clicked = None
+
+    def add_message(self, text: str, sender: str, attachments=None):
+        self._chat.add_message(text, is_user=(sender == "user"))
+
+    def update_last_message(self, text: str):
+        self._chat._update_last_text(text)
+
+    def set_thinking_status(self, text: str):
+        self._thinking.set_thinking_status(text) if hasattr(self._thinking, "set_thinking_status") else None
+
+    def set_vision_status(self, status: str):
+        self._chat.add_message(status, is_user=False)
+
+    def clear_chat(self):
+        self._chat._clear_messages()
+        self._chat._show_empty_state()
+
+    def show(self):
+        self._visible = True
+        self._chat.show()
+
+    def hide(self):
+        self._visible = False
+        self._chat.hide()
+
+    def isVisible(self):
+        return self._visible
+
+    def geometry(self):
+        return self._geometry_rect or self._chat.geometry() if hasattr(self._chat, "geometry") else type("_R", (), {"contains": lambda s, p: False})()
+
+    def width(self):
+        return 460
+
+    def height(self):
+        return 500
+
+    def move(self, x, y):
+        pass
+
+    def populate_sessions(self, sessions, click_callback):
+        self._chat.set_history_items([s.title if hasattr(s, "title") else str(s) for s in sessions])
+
+
 class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
     def __init__(self, settings, parent=None):
         super().__init__(parent)
         self.settings = settings
         self._config = ProviderConfig(settings)
 
-        self.is_hovered = False
-        self.is_expanded = False
-        self.is_dragging = False
-        import os
-        svg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources", "icons", "sparkles.svg"))
-        self.star_renderer = QSvgRenderer(svg_path)
-
         self.is_vision_enabled = False
 
         self._pyautogui_mode = PyAutoGUIExecutor.ASK_FIRST
         self._last_vision_w = 1920
         self._last_vision_h = 1080
-
-        self.drag_position = QPoint()
-        self._press_position = QPoint()
-
-        self.collapsed_size = 64
-        self.expanded_size = 460
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
@@ -195,21 +246,22 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.resize(self.collapsed_size, self.collapsed_size)
+        self.resize(64, 68)
 
         screen = QApplication.primaryScreen().availableGeometry()
-        target_x = screen.x() + screen.width() - self.collapsed_size - 40
-        target_y = screen.y() + screen.height() - self.collapsed_size - 40
-        target_x = max(screen.x(), min(target_x, screen.x() + screen.width() - self.collapsed_size))
-        target_y = max(screen.y(), min(target_y, screen.y() + screen.height() - self.collapsed_size))
+        target_x = screen.x() + screen.width() - 104
+        target_y = screen.y() + screen.height() - 104
         self.move(target_x, target_y)
 
         self.thinking_panel = ThinkingPanel()
-        self.history_popup = ChatHistoryPopup(thinking_panel=self.thinking_panel)
-        self.history_popup.close_btn.clicked.connect(self.toggle_expand)
-        self.history_popup.new_chat_clicked = self.start_new_session
 
         self._setup_ui()
+
+        # Adapter: maintain backward-compatible API for vision/uied handlers
+        self._chat_visible = False
+        self._is_sending = False
+        self._staging_files_visible = False
+        self.history_popup = _ChatPopupAdapter(self.chat_panel, self.thinking_panel)
         self._setup_context_menu()
         self._init_api()
 
@@ -243,9 +295,6 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self._task_decomposer = None
 
         self.load_session_clicked = lambda u: self._switch_to_session(u)
-        self.history_popup.populate_sessions(
-            self.session_service.get_all_sessions(), self.load_session_clicked
-        )
 
         QApplication.instance().installEventFilter(self)
 
@@ -308,87 +357,40 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
     def eventFilter(self, obj, event):
         if event.type() == QEvent.Type.MouseButtonPress:
             click_pos = event.globalPosition().toPoint()
-            if self.is_expanded:
+            if self._chat_visible:
                 bar_contains = self.geometry().contains(click_pos)
                 popup_contains = self.history_popup.isVisible() and self.history_popup.geometry().contains(click_pos)
                 if not bar_contains and not popup_contains:
-                    self.toggle_expand()
+                    self.toggle_chat()
                     return False
         return super().eventFilter(obj, event)
 
     def _setup_ui(self):
-        self.main_layout = QHBoxLayout(self)
+        self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.setSpacing(0)
+        self.main_layout.setSpacing(4)
+        self.main_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self.input_wrapper = QWidget()
-        self.input_layout = QHBoxLayout(self.input_wrapper)
-        self.input_layout.setContentsMargins(8, 0, 8, 0)
-        self.input_layout.setSpacing(2)
+        # ChatPanel (appears above the widget when visible)
+        self.chat_panel = ChatPanel()
+        self.chat_panel.setVisible(False)
+        self.chat_panel.close_requested.connect(self.toggle_chat)
+        self.chat_panel.new_chat_requested.connect(self.start_new_session)
+        self.main_layout.addWidget(self.chat_panel, alignment=Qt.AlignmentFlag.AlignRight)
 
-        # Visual Drag Grip matching GripVertical
-        self.drag_grip = QLabel("⠇")
-        self.drag_grip.setStyleSheet("color: #737373; font-size: 16px; font-weight: bold; background: transparent; padding-left: 4px;")
+        # FloatingWidget (pill-shaped input bar)
+        self.floating_widget = FloatingWidget()
+        self.floating_widget.send_requested.connect(self._on_new_widget_send)
+        self.floating_widget.settings_requested.connect(self.open_settings)
+        self.floating_widget.voice_requested.connect(self.toggle_voice)
+        self.floating_widget.vision_requested.connect(self.toggle_vision)
+        self.floating_widget.crop_requested.connect(self.trigger_uied_detection)
+        self.main_layout.addWidget(self.floating_widget, alignment=Qt.AlignmentFlag.AlignRight)
 
-        self.input_field = QLineEdit()
-        self.input_field.setPlaceholderText("Ask anything...")
-        self.input_field.setStyleSheet("""
-            QLineEdit {
-                background-color: transparent;
-                color: white;
-                border: none;
-                padding: 8px 4px;
-                font-size: 15px;
-            }
-        """)
-        self.input_field.returnPressed.connect(self.submit_message)
+        self._chat_visible = False
 
-        self.send_btn = SendButton()
-        self.send_btn.clicked.connect(self.submit_message)
-        self._is_sending = False
-
-        self.vision_btn = VisionButton()
-        self.vision_btn.clicked.connect(self.toggle_vision)
-
-        self.attach_btn = AttachButton()
-        self.attach_btn.clicked.connect(self.select_files)
-
-        self.settings_btn = SettingsButton()
-        self.settings_btn.clicked.connect(self.open_settings)
-
-        self.voice_btn = VoiceButton()
-        self.voice_btn.clicked.connect(self.toggle_voice)
-
-        self.uied_btn = UIEDButton()
-        self.uied_btn.clicked.connect(self.trigger_uied_detection)
-
-        # Expanded layout matching React layout order: Grip -> Input -> Settings -> Voice -> Vision -> UIED -> Attach -> Send
-        self.input_layout.addWidget(self.drag_grip)
-        self.input_layout.addWidget(self.input_field, 1)
-        self.input_layout.addWidget(self.settings_btn)
-        self.input_layout.addWidget(self.voice_btn)
-        self.input_layout.addWidget(self.vision_btn)
-        self.input_layout.addWidget(self.uied_btn)
-        self.input_layout.addWidget(self.attach_btn)
-        self.input_layout.addWidget(self.send_btn)
-
-        self.input_wrapper.setMinimumWidth(0)
-        self.input_wrapper.setMaximumWidth(self.expanded_size - self.collapsed_size)
-        self.input_wrapper.hide()
-
-        self.sparkle_wrapper = QWidget()
-        self.sparkle_wrapper.setFixedSize(self.collapsed_size, self.collapsed_size)
-
-        # Layout: input wrapper (hidden when collapsed), sparkle on right
-        self.panel_container = QWidget()
-        self.panel_container.setFixedWidth(0)
-        self.panel_layout = QVBoxLayout(self.panel_container)
-        self.panel_layout.setContentsMargins(0, 0, 0, 0)
-        self.panel_layout.setSpacing(0)
-        self.panel_layout.addWidget(self.input_wrapper)
-        # Add container and sparkle to main layout
-        self.main_layout.addWidget(self.panel_container)
-        self.main_layout.addWidget(self.sparkle_wrapper)
+    def _on_new_widget_send(self, text: str):
+        self.submit_message(text)
 
     def _setup_context_menu(self):
         self.context_menu = QMenu(self)
@@ -397,186 +399,22 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
             QMenu::item { padding: 8px 20px; border-radius: 4px; }
             QMenu::item:selected { background-color: #6366f1; }
         """)
-
         settings_act = QAction("Settings", self)
         settings_act.triggered.connect(self.open_settings)
-
         quit_act = QAction("Quit Assistant", self)
         quit_act.triggered.connect(QApplication.quit)
-
         self.context_menu.addAction(settings_act)
         self.context_menu.addAction(quit_act)
 
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        width = self.width()
-        height = self.height()
-        radius = height / 2.0
-
-        painter.setOpacity(1.0 if (self.is_hovered or self.is_expanded) else 0.8)
-
-        painter.setBrush(QBrush(QColor("#1e1e24"))) # Dark charcoal background to match React vda-gui
-
-        pen = QPen(QColor("#404040")) # Neutral border
-        pen.setWidth(1)
-        painter.setPen(pen)
-
-        # Adjust rect to account for pen width
-        painter.drawRoundedRect(0, 0, width - 1, height - 1, radius, radius)
-
-        painter.setOpacity(1.0)
-
-        # Calculate rect for the SVG icon
-        icon_size = 32
-        x_pos = float(width - self.collapsed_size / 2 - icon_size / 2)
-        y_pos = float(height / 2 - icon_size / 2)
-        rect = QRectF(x_pos, y_pos, float(icon_size), float(icon_size))
-
-        if self.star_renderer.isValid():
-            self.star_renderer.render(painter, rect)
-        else:
-            # Fallback
-            painter.setPen(QColor("white"))
-            font = self.font()
-            font.setPointSize(20)
-            painter.setFont(font)
-            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "★")
-
-    def _on_anim_step(self, val: int):
-        self.setUpdatesEnabled(False)
-        new_x = self._anim_right_edge - val + 1
-        self.setGeometry(new_x, self.y(), val, self.collapsed_size)
-        panel_w = max(0, val - self.collapsed_size)
-        self.panel_container.setFixedWidth(panel_w)
-        self.setUpdatesEnabled(True)
-        self.update()
-
-    def update_size(self, expand: bool):
-        target_width = self.expanded_size if expand else self.collapsed_size
-
-        if getattr(self, "_current_target_width", -1) == target_width:
-            return
-
-        self._current_target_width = target_width
-
-        if hasattr(self, 'anim') and getattr(self.anim, "state", lambda: None)() == QPropertyAnimation.State.Running:
-            self.anim.stop()
-
-        self._anim_right_edge = self.geometry().right()
-
-        self.anim = QVariantAnimation(self)
-        self.anim.setDuration(350)
-        self.anim.setEasingCurve(QEasingCurve.Type.OutQuart)
-        self.anim.valueChanged.connect(self._on_anim_step)
-
-        self.anim.setStartValue(self.width())
-        self.anim.setEndValue(target_width)
-
-        if expand:
-            try:
-                self.anim.finished.disconnect()
-            except:
-                pass
-
-            def expand_done():
-                self.input_wrapper.show()
-                self.position_history_popup()
-                self.input_field.setFocus()
-
-            self.anim.finished.connect(expand_done)
-        else:
-            self.input_wrapper.hide()
-            self.panel_container.setFixedWidth(0)
-            try:
-                self.anim.finished.disconnect()
-            except:
-                pass
-
-        self.anim.start()
-
-    def enterEvent(self, event):
-        if not self.is_dragging and not self.is_expanded:
-            self.is_hovered = True
-            self.update_size(True)
-        self.update()
-
-    def check_mouse_leave(self):
-        if not self.is_expanded and not self.geometry().contains(QCursor.pos()):
-            self.is_hovered = False
-            self.update_size(False)
-            self.update()
-
-    def leaveEvent(self, event):
-        QTimer.singleShot(100, self.check_mouse_leave)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._press_position = event.globalPosition().toPoint()
-            self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-        elif event.button() == Qt.MouseButton.RightButton:
-            self.context_menu.exec(event.globalPosition().toPoint())
-
-    def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.MouseButton.LeftButton:
-            delta = event.globalPosition().toPoint() - self._press_position
-            if delta.manhattanLength() > 5:
-                self.is_dragging = True
-
-            if self.is_dragging:
-                screen = QApplication.primaryScreen().availableGeometry()
-                new_pos = event.globalPosition().toPoint() - self.drag_position
-
-                new_x = max(screen.left(), min(new_pos.x(), screen.right() - self.width()))
-                new_y = max(screen.top(), min(new_pos.y(), screen.bottom() - self.height()))
-
-                self.move(new_x, new_y)
-                self.position_history_popup()
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            if not self.is_dragging:
-                sparkle_rect = QRect(int(self.width() - self.collapsed_size), 0, int(self.collapsed_size), int(self.collapsed_size))
-                if sparkle_rect.contains(event.position().toPoint()):
-                    if not self._config.is_configured():
-                        self.open_settings()
-                    else:
-                        self.toggle_expand()
-            self.is_dragging = False
-
-    def toggle_expand(self):
-        self.is_expanded = not self.is_expanded
-
-        self.is_hovered = self.geometry().contains(QCursor.pos())
-
-        self.update_size(self.is_expanded or self.is_hovered)
-        self.update()
-
-        if self.is_expanded:
-            self.history_popup.show()
-        else:
-            self.history_popup.hide()
+    def toggle_chat(self):
+        """Show/hide the chat panel below the floating widget."""
+        self._chat_visible = not self._chat_visible
+        self.chat_panel.setVisible(self._chat_visible)
+        h = 540 if self._chat_visible else 68
+        self.setFixedHeight(h)
 
     def toggle_voice(self):
         self.history_popup.add_message("Voice Input is currently simulated.", "ai")
-
-    def position_history_popup(self):
-        screen = QApplication.primaryScreen().availableGeometry()
-        x = self.x() + self.width() - self.history_popup.width()
-
-        space_above = self.y() - screen.top()
-        space_needed = self.history_popup.height() + 15
-
-        if space_above >= space_needed:
-            y = self.y() - space_needed
-        else:
-            y = self.y() + self.height() + 15
-
-        new_x = max(screen.left(), min(x, screen.right() - self.history_popup.width()))
-        new_y = max(screen.top(), min(y, screen.bottom() - self.history_popup.height()))
-
-        self.history_popup.move(new_x, new_y)
 
     def _switch_to_session(self, session_id):
         sid, hist, last_uuid = self.session_service.load_session(session_id)
@@ -602,13 +440,20 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
         self.history_popup.staging_scroll.hide()
 
     def open_settings(self):
-        dialog = SettingsDialog(self._config, self.settings, self)
-        dialog.exec()
-        if self._config.is_configured():
-            self._init_api()
-            self.history_popup.add_message("Settings saved. API is configured.", "ai")
-        else:
-            self.history_popup.add_message("API not configured. Please set up your API key.", "ai")
+        dialog = SettingsModal(self)
+        if dialog.exec():
+            data = dialog.get_data()
+            self.settings["provider"] = data.get("provider", "OpenAI")
+            self.settings["api_model"] = data.get("model", "gpt-4o")
+            if data.get("custom_model"):
+                self.settings["api_model"] = data["custom_model"]
+            self.settings["api_key"] = data.get("api_key", "")
+            self._config = ProviderConfig(self.settings)
+            if self._config.is_configured():
+                self._init_api()
+                self.history_popup.add_message("Settings saved. API is configured.", "ai")
+            else:
+                self.history_popup.add_message("API not configured. Please set up your API key.", "ai")
 
     def _init_api(self):
         self.api_client = None
@@ -661,8 +506,8 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
 
         self.update_staging_ui()
 
-        if not self.is_expanded and self.staged_files:
-            self.toggle_expand()
+        if self.staged_files and not self._chat_visible:
+            self.toggle_chat()
 
     def update_staging_ui(self):
         while self.history_popup.staging_layout.count():
@@ -715,8 +560,10 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
             self.staged_files.pop(idx)
             self.update_staging_ui()
 
-    def submit_message(self):
-        text = self.input_field.text().strip()
+    def submit_message(self, text=None):
+        if text is None:
+            return
+        text = text.strip()
         if not text and not self.staged_files:
             return
 
@@ -724,14 +571,10 @@ class FloatingAssistant(VisionHandlerMixin, UIEDHandlerMixin, QWidget):
             text = "Please refer to the attached files."
 
         self.messages_count += 1
-        self.input_field.clear()
 
         att_copy = self.staged_files.copy()
         self.staged_files.clear()
         self.update_staging_ui()
-
-        if not self.is_expanded:
-            self.toggle_expand()
 
         self.history_popup.add_message(text, "user", attachments=att_copy)
 

@@ -17,7 +17,6 @@ class UIEDHandlerMixin:
 
         logger.info("Opening manual box editor overlay")
         self._is_uied_detecting = True
-        self.uied_btn.set_detecting(True)
 
         self._show_uied_overlay([])
 
@@ -206,8 +205,6 @@ class UIEDHandlerMixin:
 
         self._uied_components = []
         self._is_uied_detecting = False
-        self.uied_btn.set_detecting(False)
-        self.uied_btn.set_has_results(False, 0)
 
     def _on_uied_component_selected(self, component: dict):
         logger.info(f"Component selected: {component.get('label')}")
@@ -307,7 +304,7 @@ class UIEDHandlerMixin:
         actions_menu.addAction(double_act)
         actions_menu.addAction(type_act)
 
-        actions_menu.exec(self.mapToGlobal(self.uied_btn.pos()))
+        actions_menu.exec(self.mapToGlobal(self.floating_widget.pos() if hasattr(self, 'floating_widget') else self.pos()))
 
     def _execute_uied_action(self, action: str, x: int, y: int, component: dict):
         label = component.get('label', 'Unknown')

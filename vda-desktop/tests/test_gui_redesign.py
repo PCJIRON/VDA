@@ -8,6 +8,7 @@ from vda.auth.provider_config import ProviderConfig
 from vda.config.settings import Settings
 from vda.ui.assistant.chat_popup import ChatHistoryPopup
 from vda.ui.assistant.controller import FloatingAssistant
+from vda.ui.components.floating_widget import FloatingWidget
 from vda.ui.settings_dialog import SettingsDialog
 
 
@@ -31,26 +32,14 @@ class TestGUIRedesign:
     """Automated checks for settings dialog, chat popup, and assistant controller redesign."""
 
     def test_floating_assistant_redesign(self, qapp, temp_settings):
-        """Floating bar should have sizes 64px (collapsed) and 460px (expanded) and match button layout order."""
+        """Floating bar should have FloatingWidget and ChatPanel with correct initial sizes."""
         assistant = FloatingAssistant(temp_settings)
 
-        assert assistant.collapsed_size == 64
-        assert assistant.expanded_size == 460
-        assert assistant.width() == 64
-        assert assistant.height() == 64
-
-        # Verify button layout order matching React vda-gui
-        layout = assistant.input_layout
-        widgets = [layout.itemAt(i).widget() for i in range(layout.count()) if layout.itemAt(i).widget()]
-
-        assert assistant.drag_grip in widgets
-        assert assistant.input_field in widgets
-        assert assistant.settings_btn in widgets
-        assert assistant.voice_btn in widgets
-        assert assistant.vision_btn in widgets
-        assert assistant.uied_btn in widgets
-        assert assistant.attach_btn in widgets
-        assert assistant.send_btn in widgets
+        assert assistant.floating_widget is not None
+        assert assistant.floating_widget.width() == FloatingWidget.COLLAPSED_W
+        assert assistant.floating_widget.height() == FloatingWidget.HEIGHT
+        assert assistant.chat_panel is not None
+        assert not assistant._chat_visible
 
         assistant.deleteLater()
 
